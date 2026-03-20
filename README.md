@@ -3,6 +3,11 @@
 Windows 화면 상단에 고정되는 WPF 기반 커스텀 작업 전환 바입니다.  
 기본 Windows 작업표시줄을 대체하는 수준까지는 아니지만, 상단 AppBar 영역을 예약하고 실행 중인 앱을 빠르게 전환할 수 있는 실험용 프로젝트로 만들고 있습니다.
 
+## Download
+** 실행 파일입니다. 바로 다운로드해서 사용하실 수 있습니다. **
+
+[Latest Release](../../releases)
+
 ## 현재 구현된 기능
 
 - 화면 상단 `50px` AppBar 영역 예약
@@ -70,4 +75,3 @@ dotnet build TopTaskBar.sln
 
 - `bin`, `obj`, `.vs` 는 Git에 포함하지 않도록 `.gitignore` 가 설정되어 있습니다.
 - 일부 앱은 창 전환/최소화 동작이 Windows 포커스 정책이나 앱 종류에 따라 다르게 보일 수 있습니다.
-
