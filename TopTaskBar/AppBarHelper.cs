@@ -7,13 +7,15 @@ namespace TopTaskBar;
 
 internal sealed class AppBarHelper : IDisposable
 {
-    private const int BarHeight = 50;
+    public const double BarHeightDip = 50;
     private const int WmUser = 0x0400;
     private const int CallbackMessageId = WmUser + 1;
     private const int WmMouseActivate = 0x0021;
+    private const int WmDpiChanged = 0x02E0;
     private const int MaNoActivate = 3;
     private const int GwlExstyle = -20;
     private const int WsExNoActivate = 0x08000000;
+    private static readonly IntPtr MonitorDefaultToNearest = new(2);
 
     private readonly Window _window;
     private HwndSource? _source;
@@ -63,28 +65,53 @@ internal sealed class AppBarHelper : IDisposable
 
     private void UpdateAppBarBounds(IntPtr hwnd)
     {
-        var screenWidth = (int)SystemParameters.PrimaryScreenWidth;
+        if (_source?.CompositionTarget is null)
+        {
+            return;
+        }
+
+        var monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+        var monitorInfo = new MonitorInfo
+        {
+            cbSize = Marshal.SizeOf<MonitorInfo>()
+        };
+
+        if (!GetMonitorInfo(monitor, ref monitorInfo))
+        {
+            return;
+        }
+
+        var transformToDevice = _source.CompositionTarget.TransformToDevice;
+        var transformFromDevice = _source.CompositionTarget.TransformFromDevice;
+
+        var monitorLeftPx = monitorInfo.rcMonitor.left;
+        var monitorTopPx = monitorInfo.rcMonitor.top;
+        var monitorRightPx = monitorInfo.rcMonitor.right;
+        var barHeightPx = Math.Max(1, (int)Math.Round(BarHeightDip * transformToDevice.M22));
 
         var data = CreateAppBarData(hwnd);
         data.uEdge = AppBarEdge.Top;
-        data.rc.left = 0;
-        data.rc.top = 0;
-        data.rc.right = screenWidth;
-        data.rc.bottom = BarHeight;
+        data.rc.left = monitorLeftPx;
+        data.rc.top = monitorTopPx;
+        data.rc.right = monitorRightPx;
+        data.rc.bottom = monitorTopPx + barHeightPx;
 
         SHAppBarMessage(AppBarMessage.QueryPos, ref data);
 
-        data.rc.left = 0;
-        data.rc.top = 0;
-        data.rc.right = screenWidth;
-        data.rc.bottom = BarHeight;
+        data.rc.left = monitorLeftPx;
+        data.rc.top = monitorTopPx;
+        data.rc.right = monitorRightPx;
+        data.rc.bottom = monitorTopPx + barHeightPx;
 
         SHAppBarMessage(AppBarMessage.SetPos, ref data);
 
-        _window.Left = data.rc.left;
-        _window.Top = data.rc.top;
-        _window.Width = data.rc.right - data.rc.left;
-        _window.Height = data.rc.bottom - data.rc.top;
+        var topLeftDip = transformFromDevice.Transform(new Point(data.rc.left, data.rc.top));
+        var bottomRightDip = transformFromDevice.Transform(new Point(data.rc.right, data.rc.bottom));
+
+        _window.Left = topLeftDip.X;
+        _window.Top = topLeftDip.Y;
+        _window.Width = bottomRightDip.X - topLeftDip.X;
+        _window.Height = bottomRightDip.Y - topLeftDip.Y;
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -93,6 +120,11 @@ internal sealed class AppBarHelper : IDisposable
         {
             handled = true;
             return new IntPtr(MaNoActivate);
+        }
+
+        if (msg == WmDpiChanged)
+        {
+            UpdateAppBarBounds(hwnd);
         }
 
         if (msg == CallbackMessageId && wParam.ToInt32() == (int)AppBarNotification.PosChanged)
@@ -159,8 +191,23 @@ internal sealed class AppBarHelper : IDisposable
         public int bottom;
     }
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    private struct MonitorInfo
+    {
+        public int cbSize;
+        public Rect rcMonitor;
+        public Rect rcWork;
+        public int dwFlags;
+    }
+
     [DllImport("shell32.dll", CallingConvention = CallingConvention.StdCall)]
     private static extern uint SHAppBarMessage(AppBarMessage dwMessage, ref AppBarData pData);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, IntPtr dwFlags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfo lpmi);
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLong")]
     private static extern int GetWindowLong(IntPtr hWnd, int nIndex);

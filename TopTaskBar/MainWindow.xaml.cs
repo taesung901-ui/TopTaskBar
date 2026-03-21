@@ -130,10 +130,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        Left = 0;
-        Top = 0;
-        Width = SystemParameters.PrimaryScreenWidth;
-        Height = 50;
         ApplyTheme();
         UpdateCurrentDateTime();
         RefreshOpenWindows();
