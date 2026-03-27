@@ -31,6 +31,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     public MainWindow()
     {
+        InteractionLogger.Log($"Application started. LogPath={InteractionLogger.CurrentLogPath}");
         _settings = SettingsStore.Load();
         _windowSlotWidth = ClampWindowSlotWidth(_settings.WindowSlotWidth);
 
@@ -190,6 +191,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             return;
         }
+
+        var debugInfo = WindowCatalog.GetWindowDebugInfo(windowInfo.Hwnd);
+        InteractionLogger.Log(
+            $"ButtonClick title=\"{windowInfo.Title}\" original=0x{debugInfo.OriginalHandle.ToInt64():X} " +
+            $"comparable=0x{debugInfo.ComparableHandle.ToInt64():X} action=0x{debugInfo.ActionHandle.ToInt64():X} windowInfo.IsActive={windowInfo.IsActive} " +
+            $"foreground=0x{debugInfo.ForegroundHandle.ToInt64():X} foregroundComparable=0x{debugInfo.ForegroundComparableHandle.ToInt64():X} " +
+            $"isMinimized={debugInfo.IsMinimized}");
 
         if (windowInfo.IsActive)
         {

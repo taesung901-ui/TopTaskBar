@@ -14,6 +14,8 @@ internal static class WindowCatalog
     private const int PreferredIconSize = 32;
     private const int DwmaCloaked = 14;
     private const int GwlExstyle = -20;
+    private const uint GaRoot = 2;
+    private const uint GaRootOwner = 3;
     private const long WsExToolwindow = 0x00000080L;
     private const long WsExAppwindow = 0x00040000L;
     private const int GwOwner = 4;
@@ -24,6 +26,9 @@ internal static class WindowCatalog
     private const int SwRestore = 9;
     private const int SwMinimize = 6;
     private const int SwShow = 5;
+    private const int WmSyscommand = 0x0112;
+    private static readonly IntPtr ScMinimize = new(0xF020);
+    private static readonly IntPtr ScRestore = new(0xF120);
     private const uint ProcessQueryLimitedInformation = 0x1000;
     private const uint ShgfiIcon = 0x000000100;
     private const uint ShgfiLargeIcon = 0x000000000;
@@ -34,7 +39,7 @@ internal static class WindowCatalog
     {
         var windows = new List<AppWindowInfo>();
         var shellWindow = GetShellWindow();
-        var foregroundWindow = GetForegroundWindow();
+        var foregroundWindow = GetComparableWindow(GetForegroundWindow());
 
         EnumWindows((hwnd, _) =>
         {
@@ -54,7 +59,7 @@ internal static class WindowCatalog
                 Hwnd = hwnd,
                 Title = title,
                 Icon = GetWindowIcon(hwnd),
-                IsActive = hwnd == foregroundWindow
+                IsActive = GetComparableWindow(hwnd) == foregroundWindow
             });
 
             return true;
@@ -70,6 +75,9 @@ internal static class WindowCatalog
             return;
         }
 
+        var originalHwnd = hwnd;
+        hwnd = GetActionableWindow(hwnd);
+
         var foregroundWindow = GetForegroundWindow();
         var currentThreadId = GetCurrentThreadId();
         var foregroundThreadId = foregroundWindow == IntPtr.Zero
@@ -77,8 +85,9 @@ internal static class WindowCatalog
             : GetWindowThreadProcessId(foregroundWindow, out _);
         var targetThreadId = GetWindowThreadProcessId(hwnd, out _);
 
-        if (IsIconic(hwnd))
+        if (IsWindowMinimized(hwnd))
         {
+            SendMessage(hwnd, WmSyscommand, ScRestore, IntPtr.Zero);
             ShowWindowAsync(hwnd, SwRestore);
         }
         else
@@ -98,10 +107,17 @@ internal static class WindowCatalog
 
         try
         {
+            InteractionLogger.Log(
+                $"ActivateWindow original=0x{originalHwnd.ToInt64():X} target=0x{hwnd.ToInt64():X} " +
+                $"foreground=0x{foregroundWindow.ToInt64():X} minimized={IsWindowMinimized(hwnd)}");
             BringWindowToTop(hwnd);
             SetForegroundWindow(hwnd);
             SetFocus(hwnd);
             SetActiveWindow(hwnd);
+            var finalForeground = GetForegroundWindow();
+            InteractionLogger.Log(
+                $"ActivateWindow result target=0x{hwnd.ToInt64():X} finalForeground=0x{finalForeground.ToInt64():X} " +
+                $"matched={GetComparableWindow(finalForeground) == hwnd}");
         }
         finally
         {
@@ -124,12 +140,85 @@ internal static class WindowCatalog
             return;
         }
 
+        var originalHwnd = hwnd;
+        hwnd = GetActionableWindow(hwnd);
+        InteractionLogger.Log(
+            $"MinimizeWindow original=0x{originalHwnd.ToInt64():X} target=0x{hwnd.ToInt64():X} minimizedBefore={IsWindowMinimized(hwnd)}");
+        SendMessage(hwnd, WmSyscommand, ScMinimize, IntPtr.Zero);
         ShowWindowAsync(hwnd, SwMinimize);
+        InteractionLogger.Log(
+            $"MinimizeWindow result target=0x{hwnd.ToInt64():X} minimizedAfter={IsWindowMinimized(hwnd)}");
     }
 
     public static bool IsForegroundWindow(IntPtr hwnd)
     {
-        return hwnd != IntPtr.Zero && hwnd == GetForegroundWindow();
+        return hwnd != IntPtr.Zero && GetComparableWindow(hwnd) == GetComparableWindow(GetForegroundWindow());
+    }
+
+    public static WindowDebugInfo GetWindowDebugInfo(IntPtr hwnd)
+    {
+        var comparableHandle = GetComparableWindow(hwnd);
+        var actionHandle = GetActionableWindow(hwnd);
+        var foregroundHandle = GetForegroundWindow();
+        var foregroundComparableHandle = GetComparableWindow(foregroundHandle);
+
+        return new WindowDebugInfo(
+            hwnd,
+            comparableHandle,
+            actionHandle,
+            foregroundHandle,
+            foregroundComparableHandle,
+            hwnd != IntPtr.Zero && IsWindowMinimized(actionHandle),
+            hwnd == IntPtr.Zero ? string.Empty : GetWindowTitle(hwnd));
+    }
+
+    private static IntPtr GetComparableWindow(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            return IntPtr.Zero;
+        }
+
+        var rootOwner = GetAncestor(hwnd, GaRootOwner);
+        if (rootOwner != IntPtr.Zero)
+        {
+            return rootOwner;
+        }
+
+        var root = GetAncestor(hwnd, GaRoot);
+        return root != IntPtr.Zero ? root : hwnd;
+    }
+
+    private static IntPtr GetActionableWindow(IntPtr hwnd)
+    {
+        var comparable = GetComparableWindow(hwnd);
+        if (comparable == IntPtr.Zero)
+        {
+            return IntPtr.Zero;
+        }
+
+        var popup = GetLastActivePopup(comparable);
+        if (popup != IntPtr.Zero && IsWindowVisible(popup))
+        {
+            return popup;
+        }
+
+        return comparable;
+    }
+
+    private static bool IsWindowMinimized(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        var placement = new WindowPlacement
+        {
+            length = Marshal.SizeOf<WindowPlacement>()
+        };
+
+        return GetWindowPlacement(hwnd, ref placement) && placement.showCmd == SwShowminimized;
     }
 
     private static bool ShouldIncludeWindow(IntPtr hwnd, IntPtr excludedHwnd, IntPtr shellWindow)
@@ -299,6 +388,35 @@ internal static class WindowCatalog
         public string szTypeName;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Point
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Rect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WindowPlacement
+    {
+        public int length;
+        public int flags;
+        public int showCmd;
+        public Point ptMinPosition;
+        public Point ptMaxPosition;
+        public Rect rcNormalPosition;
+    }
+
+    private const int SwShowminimized = 2;
+
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
@@ -310,6 +428,12 @@ internal static class WindowCatalog
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetLastActivePopup(IntPtr hWnd);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
@@ -340,6 +464,9 @@ internal static class WindowCatalog
 
     [DllImport("user32.dll")]
     private static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowPlacement(IntPtr hWnd, ref WindowPlacement lpwndpl);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);

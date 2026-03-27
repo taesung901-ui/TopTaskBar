@@ -102,8 +102,8 @@
                                                 Margin="0,0,6,0"
                                                 Padding="0"
                                                 ToolTip="{Binding Title}"
-                                                Background="#0DFFFFFF"
-                                                BorderBrush="#18FFFFFF"
+                                                Background="#12FFFFFF"
+                                                BorderBrush="#52FFFFFF"
                                                 BorderThickness="1"
                                                 Cursor="Hand">
                                             <Button.Template>
@@ -119,15 +119,15 @@
                                                     <ControlTemplate.Triggers>
                                                         <DataTrigger Binding="{Binding IsActive}" Value="True">
                                                             <Setter TargetName="Root" Property="Background" Value="#5070E6FF" />
-                                                            <Setter TargetName="Root" Property="BorderBrush" Value="#90B7F4FF" />
+                                                            <Setter TargetName="Root" Property="BorderBrush" Value="#C0D8F7FF" />
                                                         </DataTrigger>
                                                         <Trigger Property="IsMouseOver" Value="True">
                                                             <Setter TargetName="Root" Property="Background" Value="#28FFFFFF" />
-                                                            <Setter TargetName="Root" Property="BorderBrush" Value="#4AFFFFFF" />
+                                                            <Setter TargetName="Root" Property="BorderBrush" Value="#88FFFFFF" />
                                                         </Trigger>
                                                         <Trigger Property="IsPressed" Value="True">
                                                             <Setter TargetName="Root" Property="Background" Value="#3A67E8F9" />
-                                                            <Setter TargetName="Root" Property="BorderBrush" Value="#7099F6FF" />
+                                                            <Setter TargetName="Root" Property="BorderBrush" Value="#B0CFF9FF" />
                                                         </Trigger>
                                                     </ControlTemplate.Triggers>
                                                 </ControlTemplate>
