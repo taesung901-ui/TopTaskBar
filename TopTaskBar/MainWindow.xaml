@@ -17,6 +17,11 @@
         Topmost="True"
         WindowStartupLocation="Manual">
     <Window.Resources>
+        <Style TargetType="{x:Type Button}">
+            <Setter Property="ToolTipService.InitialShowDelay" Value="50" />
+            <Setter Property="ToolTipService.BetweenShowDelay" Value="100" />
+        </Style>
+
         <ContextMenu x:Key="SettingsMenu">
             <MenuItem Header="Window Slot Width" IsEnabled="False" />
             <MenuItem Header="Narrower" Click="OnDecreaseWidthClick" />
@@ -141,9 +146,11 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
-                            <Button Height="30"
+                            <Button x:Name="DateTimeButton"
+                                    Height="30"
                                     MinWidth="116"
                                     Padding="12,0"
+                                    PreviewMouseLeftButtonDown="OnDateTimeButtonPreviewMouseLeftButtonDown"
                                     Background="#0DFFFFFF"
                                     BorderBrush="#18FFFFFF"
                                     BorderThickness="1"
@@ -166,11 +173,153 @@
                                         </ControlTemplate.Triggers>
                                     </ControlTemplate>
                                 </Button.Template>
-                                <TextBlock FontSize="13"
+                                <TextBlock FontSize="15"
                                            FontWeight="SemiBold"
                                            Foreground="{Binding PrimaryForegroundBrush}"
                                            Text="{Binding CurrentDateTimeText}" />
                             </Button>
+
+                            <Popup x:Name="CalendarPopup"
+                                   PlacementTarget="{Binding ElementName=DateTimeButton}"
+                                   Placement="Bottom"
+                                   VerticalOffset="8"
+                                   StaysOpen="True"
+                                   AllowsTransparency="True"
+                                   PopupAnimation="Fade"
+                                   Opened="OnCalendarPopupOpened"
+                                   Closed="OnCalendarPopupClosed">
+                                <Border x:Name="CalendarPopupRoot"
+                                        Width="364"
+                                        Padding="14"
+                                        CornerRadius="16"
+                                        Background="#E8F3F5F8"
+                                        BorderBrush="{Binding BarBorderBrush}"
+                                        BorderThickness="1"
+                                        SnapsToDevicePixels="True">
+                                    <StackPanel>
+                                        <Grid Margin="0,0,0,12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <Button Grid.Column="0"
+                                                    Width="28"
+                                                    Height="28"
+                                                    Padding="0"
+                                                    Click="OnPreviousMonthClick"
+                                                    Background="#10FFFFFF"
+                                                    BorderBrush="#24FFFFFF"
+                                                    BorderThickness="1"
+                                                    Cursor="Hand">
+                                                <TextBlock Text="&#x2039;"
+                                                           FontSize="18"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{Binding PrimaryForegroundBrush}" />
+                                            </Button>
+
+                                            <TextBlock Grid.Column="1"
+                                                       VerticalAlignment="Center"
+                                                       HorizontalAlignment="Center"
+                                                       FontSize="18"
+                                                       FontWeight="Medium"
+                                                       Foreground="{Binding PrimaryForegroundBrush}"
+                                                       Text="{Binding DisplayMonthLabel}" />
+
+                                            <Button Grid.Column="2"
+                                                    Width="28"
+                                                    Height="28"
+                                                    Padding="0"
+                                                    Click="OnNextMonthClick"
+                                                    Background="#10FFFFFF"
+                                                    BorderBrush="#24FFFFFF"
+                                                    BorderThickness="1"
+                                                    Cursor="Hand">
+                                                <TextBlock Text="&#x203A;"
+                                                           FontSize="18"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{Binding PrimaryForegroundBrush}" />
+                                            </Button>
+                                        </Grid>
+
+                                        <UniformGrid Columns="7"
+                                                     Margin="0,0,0,8">
+                                            <TextBlock Text="일" TextAlignment="Center" FontWeight="Normal" Foreground="#F87171" />
+                                            <TextBlock Text="월" TextAlignment="Center" FontWeight="Normal" Foreground="{Binding MutedForegroundBrush}" />
+                                            <TextBlock Text="화" TextAlignment="Center" FontWeight="Normal" Foreground="{Binding MutedForegroundBrush}" />
+                                            <TextBlock Text="수" TextAlignment="Center" FontWeight="Normal" Foreground="{Binding MutedForegroundBrush}" />
+                                            <TextBlock Text="목" TextAlignment="Center" FontWeight="Normal" Foreground="{Binding MutedForegroundBrush}" />
+                                            <TextBlock Text="금" TextAlignment="Center" FontWeight="Normal" Foreground="{Binding MutedForegroundBrush}" />
+                                            <TextBlock Text="토" TextAlignment="Center" FontWeight="Normal" Foreground="#60A5FA" />
+                                        </UniformGrid>
+
+                                        <ItemsControl ItemsSource="{Binding CalendarDays}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <UniformGrid Columns="7" Rows="6" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type local:CalendarDayItem}">
+                                                    <Button Click="OnCalendarDayClick"
+                                                            Margin="2"
+                                                            Height="38"
+                                                            Padding="0"
+                                                            Background="Transparent"
+                                                            BorderBrush="Transparent"
+                                                            BorderThickness="1"
+                                                            Cursor="Hand">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border x:Name="Root"
+                                                                        Background="{TemplateBinding Background}"
+                                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                                        CornerRadius="10">
+                                                                    <TextBlock x:Name="DayText"
+                                                                               Text="{Binding DayText}"
+                                                                               FontSize="15"
+                                                                               FontWeight="Normal"
+                                                                               HorizontalAlignment="Center"
+                                                                               VerticalAlignment="Center"
+                                                                               Foreground="{Binding DataContext.PrimaryForegroundBrush, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsCurrentMonth}" Value="False">
+                                                                        <Setter TargetName="DayText" Property="Opacity" Value="0.35" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsSunday}" Value="True">
+                                                                        <Setter TargetName="DayText" Property="Foreground" Value="#F87171" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsSaturday}" Value="True">
+                                                                        <Setter TargetName="DayText" Property="Foreground" Value="#60A5FA" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsToday}" Value="True">
+                                                                        <Setter TargetName="Root" Property="BorderBrush" Value="{Binding DataContext.AccentBorderBrush, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                                        <Setter TargetName="Root" Property="BorderThickness" Value="1.5" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                        <Setter TargetName="Root" Property="Background" Value="{Binding DataContext.AccentBackgroundBrush, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                                        <Setter TargetName="Root" Property="BorderBrush" Value="{Binding DataContext.AccentBorderBrush, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                                        <Setter TargetName="DayText" Property="Foreground" Value="{Binding DataContext.PrimaryForegroundBrush, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                                    </DataTrigger>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="Root" Property="Background" Value="#12FFFFFF" />
+                                                                        <Setter TargetName="Root" Property="BorderBrush" Value="#30FFFFFF" />
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </Popup>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
