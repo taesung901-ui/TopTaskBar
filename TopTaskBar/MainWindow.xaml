@@ -22,6 +22,49 @@
             <Setter Property="ToolTipService.BetweenShowDelay" Value="100" />
         </Style>
 
+        <Style x:Key="AlarmToggleSwitchStyle" TargetType="{x:Type CheckBox}">
+            <Setter Property="Width" Value="38" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid Width="{TemplateBinding Width}"
+                              Height="{TemplateBinding Height}">
+                            <Border x:Name="Track"
+                                    Background="#88A0A7B4"
+                                    CornerRadius="11" />
+                            <Border x:Name="Thumb"
+                                    Width="18"
+                                    Height="18"
+                                    Margin="2,0,0,0"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="White"
+                                    CornerRadius="9" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="#6B6BFF" />
+                                <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right" />
+                                <Setter TargetName="Thumb" Property="Margin" Value="0,0,2,0" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Track" Property="Opacity" Value="0.92" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Track" Property="Opacity" Value="0.82" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Track" Property="Opacity" Value="0.45" />
+                                <Setter TargetName="Thumb" Property="Opacity" Value="0.65" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <ContextMenu x:Key="RunningAppMenu"
                      Opened="OnRunningAppMenuOpened"
                      Closed="OnRunningAppMenuClosed">
@@ -566,6 +609,8 @@
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="8" />
                                                 <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="8" />
+                                                <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
 
                                             <Button Grid.Column="0"
@@ -651,7 +696,394 @@
                                                                Foreground="{Binding PrimaryForegroundBrush}" />
                                                 </StackPanel>
                                             </Button>
+
+                                            <Button x:Name="TimerToolButton"
+                                                    Grid.Column="4"
+                                                    Height="34"
+                                                    Padding="0"
+                                                    PreviewMouseLeftButtonDown="OnTimerToolButtonPreviewMouseLeftButtonDown"
+                                                    ToolTip="타이머/알람 도구"
+                                                    Background="#14FFFFFF"
+                                                    BorderBrush="#30FFFFFF"
+                                                    BorderThickness="1"
+                                                    Cursor="Hand">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border x:Name="Root"
+                                                                Background="{TemplateBinding Background}"
+                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                                CornerRadius="12">
+                                                            <ContentPresenter HorizontalAlignment="Center"
+                                                                              VerticalAlignment="Center" />
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="Root" Property="Background" Value="#1EFFFFFF" />
+                                                                <Setter TargetName="Root" Property="BorderBrush" Value="#46FFFFFF" />
+                                                            </Trigger>
+                                                            <Trigger Property="IsPressed" Value="True">
+                                                                <Setter TargetName="Root" Property="Background" Value="#28FFFFFF" />
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                                <StackPanel Orientation="Horizontal"
+                                                            HorizontalAlignment="Center">
+                                                    <TextBlock Text="⏱"
+                                                               FontSize="13"
+                                                               Margin="0,0,6,0"
+                                                               Foreground="{Binding PrimaryForegroundBrush}" />
+                                                    <TextBlock Text="타이머"
+                                                               FontSize="13"
+                                                               FontWeight="Medium"
+                                                               Foreground="{Binding PrimaryForegroundBrush}" />
+                                                </StackPanel>
+                                            </Button>
                                         </Grid>
+
+                                        <Popup x:Name="TimerToolPopup"
+                                               PlacementTarget="{Binding ElementName=TimerToolButton}"
+                                               Placement="Top"
+                                               VerticalOffset="-8"
+                                               HorizontalOffset="0"
+                                               StaysOpen="True"
+                                               AllowsTransparency="True"
+                                               PopupAnimation="Fade"
+                                               Opened="OnTimerToolPopupOpened"
+                                               Closed="OnTimerToolPopupClosed">
+                                            <Border x:Name="TimerToolPopupRoot"
+                                                    Width="260"
+                                                    Padding="14"
+                                                    CornerRadius="16"
+                                                    Background="#ECF3F5F8"
+                                                    BorderBrush="{Binding BarBorderBrush}"
+                                                    BorderThickness="1"
+                                                    SnapsToDevicePixels="True">
+                                                <StackPanel>
+                                                    <UniformGrid Rows="1"
+                                                                 Columns="2">
+                                                        <Button Height="32"
+                                                                Margin="0,0,4,0"
+                                                                Click="OnSelectTimerTabClick"
+                                                                Background="#14FFFFFF"
+                                                                BorderBrush="#30FFFFFF"
+                                                                BorderThickness="1"
+                                                                Cursor="Hand"
+                                                                Content="타이머">
+                                                            <Button.Style>
+                                                                <Style TargetType="Button">
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsTimerTabSelected}" Value="True">
+                                                                            <Setter Property="Background" Value="#28FFFFFF" />
+                                                                            <Setter Property="BorderBrush" Value="#56FFFFFF" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Button.Style>
+                                                        </Button>
+                                                        <Button Height="32"
+                                                                Margin="4,0,0,0"
+                                                                Click="OnSelectAlarmTabClick"
+                                                                Background="#14FFFFFF"
+                                                                BorderBrush="#30FFFFFF"
+                                                                BorderThickness="1"
+                                                                Cursor="Hand"
+                                                                Content="알람">
+                                                            <Button.Style>
+                                                                <Style TargetType="Button">
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsAlarmTabSelected}" Value="True">
+                                                                            <Setter Property="Background" Value="#28FFFFFF" />
+                                                                            <Setter Property="BorderBrush" Value="#56FFFFFF" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Button.Style>
+                                                        </Button>
+                                                    </UniformGrid>
+
+                                                    <StackPanel Margin="0,12,0,0">
+                                                        <StackPanel.Style>
+                                                            <Style TargetType="StackPanel">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsTimerTabSelected}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </StackPanel.Style>
+
+                                                    <TextBlock Text="Timer"
+                                                               FontSize="15"
+                                                               FontWeight="Medium"
+                                                               Foreground="{Binding PrimaryForegroundBrush}" />
+                                                    <TextBlock Margin="0,6,0,0"
+                                                               Text="{Binding TimerTool.SelectedDurationText, StringFormat=설정 시간 {0}}"
+                                                               FontSize="12"
+                                                               Foreground="{Binding MutedForegroundBrush}" />
+                                                    <TextBlock Margin="0,8,0,0"
+                                                               Text="{Binding TimerTool.RemainingTimeText}"
+                                                               FontSize="24"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{Binding PrimaryForegroundBrush}" />
+                                                    <Grid Margin="0,12,0,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="12" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <StackPanel Grid.Column="0">
+                                                            <TextBlock Text="분"
+                                                                       Margin="2,0,0,4"
+                                                                       FontSize="11"
+                                                                       Foreground="{Binding MutedForegroundBrush}" />
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="30" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBox x:Name="TimerMinutesTextBox"
+                                                                         Grid.Column="0"
+                                                                         Height="58"
+                                                                         VerticalContentAlignment="Center"
+                                                                         HorizontalContentAlignment="Center"
+                                                                         FontSize="20"
+                                                                         FontWeight="SemiBold"
+                                                                         Text="05"
+                                                                         LostFocus="OnTimerDurationTextBoxLostFocus"
+                                                                         KeyDown="OnTimerDurationTextBoxKeyDown"
+                                                                         Background="#14FFFFFF"
+                                                                         BorderBrush="#30FFFFFF"
+                                                                         BorderThickness="1"
+                                                                         Foreground="{Binding PrimaryForegroundBrush}"
+                                                                         CaretBrush="{Binding PrimaryForegroundBrush}" />
+                                                                <Grid Grid.Column="1"
+                                                                      Margin="6,0,0,0">
+                                                                    <Grid.RowDefinitions>
+                                                                        <RowDefinition Height="*" />
+                                                                        <RowDefinition Height="4" />
+                                                                        <RowDefinition Height="*" />
+                                                                    </Grid.RowDefinitions>
+                                                                    <Button Grid.Row="0"
+                                                                            Click="OnTimerMinutesIncreaseClick"
+                                                                            Padding="0"
+                                                                            Background="#14FFFFFF"
+                                                                            BorderBrush="#30FFFFFF"
+                                                                            BorderThickness="1"
+                                                                            Cursor="Hand"
+                                                                            Content="▲" />
+                                                                    <Button Grid.Row="2"
+                                                                            Click="OnTimerMinutesDecreaseClick"
+                                                                            Padding="0"
+                                                                            Background="#14FFFFFF"
+                                                                            BorderBrush="#30FFFFFF"
+                                                                            BorderThickness="1"
+                                                                            Cursor="Hand"
+                                                                            Content="▼" />
+                                                                </Grid>
+                                                            </Grid>
+                                                        </StackPanel>
+
+                                                        <StackPanel Grid.Column="2">
+                                                            <TextBlock Text="초"
+                                                                       Margin="2,0,0,4"
+                                                                       FontSize="11"
+                                                                       Foreground="{Binding MutedForegroundBrush}" />
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="30" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBox x:Name="TimerSecondsTextBox"
+                                                                         Grid.Column="0"
+                                                                         Height="58"
+                                                                         VerticalContentAlignment="Center"
+                                                                         HorizontalContentAlignment="Center"
+                                                                         FontSize="20"
+                                                                         FontWeight="SemiBold"
+                                                                         Text="00"
+                                                                         LostFocus="OnTimerDurationTextBoxLostFocus"
+                                                                         KeyDown="OnTimerDurationTextBoxKeyDown"
+                                                                         Background="#14FFFFFF"
+                                                                         BorderBrush="#30FFFFFF"
+                                                                         BorderThickness="1"
+                                                                         Foreground="{Binding PrimaryForegroundBrush}"
+                                                                         CaretBrush="{Binding PrimaryForegroundBrush}" />
+                                                                <Grid Grid.Column="1"
+                                                                      Margin="6,0,0,0">
+                                                                    <Grid.RowDefinitions>
+                                                                        <RowDefinition Height="*" />
+                                                                        <RowDefinition Height="4" />
+                                                                        <RowDefinition Height="*" />
+                                                                    </Grid.RowDefinitions>
+                                                                    <Button Grid.Row="0"
+                                                                            Click="OnTimerSecondsIncreaseClick"
+                                                                            Padding="0"
+                                                                            Background="#14FFFFFF"
+                                                                            BorderBrush="#30FFFFFF"
+                                                                            BorderThickness="1"
+                                                                            Cursor="Hand"
+                                                                            Content="▲" />
+                                                                    <Button Grid.Row="2"
+                                                                            Click="OnTimerSecondsDecreaseClick"
+                                                                            Padding="0"
+                                                                            Background="#14FFFFFF"
+                                                                            BorderBrush="#30FFFFFF"
+                                                                            BorderThickness="1"
+                                                                            Cursor="Hand"
+                                                                            Content="▼" />
+                                                                </Grid>
+                                                            </Grid>
+                                                        </StackPanel>
+                                                    </Grid>
+
+                                                    <UniformGrid Margin="0,12,0,0"
+                                                                 Rows="1"
+                                                                 Columns="3">
+                                                        <Button Margin="0,0,6,0"
+                                                                Height="34"
+                                                                Click="OnTimerStartClick"
+                                                                IsEnabled="{Binding TimerTool.CanStart}"
+                                                                Background="#14FFFFFF"
+                                                                BorderBrush="#30FFFFFF"
+                                                                BorderThickness="1"
+                                                                Cursor="Hand"
+                                                                Content="시작" />
+                                                        <Button Margin="0,0,6,0"
+                                                                Height="34"
+                                                                Click="OnTimerPauseClick"
+                                                                IsEnabled="{Binding TimerTool.CanPause}"
+                                                                Background="#14FFFFFF"
+                                                                BorderBrush="#30FFFFFF"
+                                                                BorderThickness="1"
+                                                                Cursor="Hand"
+                                                                Content="중지" />
+                                                        <Button Height="34"
+                                                                Click="OnTimerResetClick"
+                                                                IsEnabled="{Binding TimerTool.CanReset}"
+                                                                Background="#14FFFFFF"
+                                                                BorderBrush="#30FFFFFF"
+                                                                BorderThickness="1"
+                                                                Cursor="Hand"
+                                                                Content="리셋" />
+                                                    </UniformGrid>
+
+                                                    <TextBlock Margin="0,10,0,0"
+                                                               Text="{Binding TimerTool.StatusText, StringFormat=상태: {0}}"
+                                                               FontSize="12"
+                                                               Foreground="{Binding MutedForegroundBrush}" />
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="0,12,0,0">
+                                                        <StackPanel.Style>
+                                                            <Style TargetType="StackPanel">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsAlarmTabSelected}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </StackPanel.Style>
+
+                                                        <TextBlock Margin="0"
+                                                                   Visibility="Collapsed"
+                                                                   Text="기본 알람 3개를 카드로 표시합니다."
+                                                                   FontSize="12"
+                                                                   Foreground="{Binding MutedForegroundBrush}" />
+                                                        <ItemsControl Margin="0"
+                                                                      ItemsSource="{Binding AlarmEntries}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate DataType="{x:Type local:AlarmEntry}">
+                                                                    <Border Margin="0,0,0,6"
+                                                                            Padding="10"
+                                                                            CornerRadius="12"
+                                                                            Background="#10FFFFFF"
+                                                                            BorderBrush="#24FFFFFF"
+                                                                            BorderThickness="1">
+                                                                        <Border.Style>
+                                                                            <Style TargetType="Border">
+                                                                                <Setter Property="Opacity" Value="0.78" />
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding Enabled}" Value="True">
+                                                                                        <Setter Property="Opacity" Value="1" />
+                                                                                        <Setter Property="Background" Value="#16FFFFFF" />
+                                                                                        <Setter Property="BorderBrush" Value="#42FFFFFF" />
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </Border.Style>
+                                                                        <Grid>
+                                                                            <Grid.ColumnDefinitions>
+                                                                                <ColumnDefinition Width="*" />
+                                                                                <ColumnDefinition Width="Auto" />
+                                                                            </Grid.ColumnDefinitions>
+
+                                                                            <Button Grid.Column="0"
+                                                                                    Click="OnEditAlarmClick"
+                                                                                    Padding="0"
+                                                                                    Background="Transparent"
+                                                                                    BorderBrush="Transparent"
+                                                                                    BorderThickness="0"
+                                                                                    Cursor="Hand"
+                                                                                    ToolTip="알람 편집">
+                                                                                <Button.Template>
+                                                                                    <ControlTemplate TargetType="Button">
+                                                                                        <ContentPresenter />
+                                                                                    </ControlTemplate>
+                                                                                </Button.Template>
+                                                                                <StackPanel HorizontalAlignment="Left">
+                                                                                    <TextBlock Text="{Binding Label}"
+                                                                                               FontSize="11"
+                                                                                               Foreground="{Binding DataContext.MutedForegroundBrush, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                                                    <StackPanel Margin="0,4,0,0"
+                                                                                                Orientation="Horizontal">
+                                                                                        <TextBlock Text="{Binding MeridiemText}"
+                                                                                                   Margin="0,7,5,0"
+                                                                                                   FontSize="12"
+                                                                                                   FontWeight="SemiBold"
+                                                                                                   Foreground="{Binding DataContext.MutedForegroundBrush, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                                                        <TextBlock Text="{Binding DisplayTimeText}"
+                                                                                                   FontSize="24"
+                                                                                                   FontWeight="Light"
+                                                                                                   Foreground="{Binding DataContext.PrimaryForegroundBrush, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                                                    </StackPanel>
+                                                                                    <TextBlock Margin="0,4,0,0"
+                                                                                               Text="{Binding StatusSummary}"
+                                                                                               FontSize="11"
+                                                                                               Foreground="{Binding DataContext.MutedForegroundBrush, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                                                </StackPanel>
+                                                                            </Button>
+
+                                                                            <StackPanel Grid.Column="1"
+                                                                                        HorizontalAlignment="Right"
+                                                                                        VerticalAlignment="Center">
+                                                                                <TextBlock Text="클릭해서 편집"
+                                                                                           Margin="0,0,0,6"
+                                                                                           FontSize="10"
+                                                                                           HorizontalAlignment="Right"
+                                                                                           Foreground="{Binding DataContext.MutedForegroundBrush, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                                                <CheckBox IsChecked="{Binding Enabled}"
+                                                                                          Checked="OnAlarmEnabledChanged"
+                                                                                          Unchecked="OnAlarmEnabledChanged"
+                                                                                          Style="{StaticResource AlarmToggleSwitchStyle}"
+                                                                                          HorizontalAlignment="Right"
+                                                                                          Cursor="Hand"
+                                                                                          ToolTip="알람 활성화/비활성화" />
+                                                                            </StackPanel>
+                                                                        </Grid>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+                                        </Popup>
+
                                     </StackPanel>
                                 </Border>
                             </Popup>

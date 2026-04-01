@@ -1,0 +1,195 @@
+<Window x:Class="TopTaskBar.AlarmEditWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="380"
+        Height="308"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen">
+    <Border Padding="14"
+            CornerRadius="18"
+            Background="#ECF3F5F8"
+            BorderBrush="#80A8C4D8"
+            BorderThickness="1"
+            SnapsToDevicePixels="True">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="8" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="8" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="8" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="8" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <TextBox x:Name="AlarmLabelTextBox"
+                     Padding="10,7"
+                     FontSize="17"
+                     FontWeight="SemiBold"
+                     Foreground="#1E2A33"
+                     Background="#14FFFFFF"
+                     BorderBrush="#30FFFFFF"
+                     BorderThickness="1"
+                     CaretBrush="#1E2A33" />
+
+            <Border Grid.Row="2"
+                    Padding="10"
+                    CornerRadius="14"
+                    Background="#14FFFFFF"
+                    BorderBrush="#30FFFFFF"
+                    BorderThickness="1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="96" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <ComboBox x:Name="MeridiemComboBox"
+                              SelectedIndex="0"
+                              Height="36"
+                              VerticalContentAlignment="Center"
+                              Background="#10FFFFFF"
+                              BorderBrush="#30FFFFFF"
+                              BorderThickness="1">
+                        <ComboBoxItem Content="오전" />
+                        <ComboBoxItem Content="오후" />
+                    </ComboBox>
+
+                    <Grid Grid.Column="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="30" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="HourTextBox"
+                                 Height="46"
+                                 VerticalContentAlignment="Center"
+                                 HorizontalContentAlignment="Center"
+                                 FontSize="20"
+                                 FontWeight="SemiBold"
+                                 Text="12"
+                                 Background="#10FFFFFF"
+                                 BorderBrush="#30FFFFFF"
+                                 BorderThickness="1"
+                                 Foreground="#1E2A33" />
+                        <Grid Grid.Column="1"
+                              Margin="6,0,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="4" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Button Grid.Row="0"
+                                    Click="OnHourIncreaseClick"
+                                    Background="#14FFFFFF"
+                                    BorderBrush="#30FFFFFF"
+                                    BorderThickness="1"
+                                    Cursor="Hand"
+                                    Content="▲" />
+                            <Button Grid.Row="2"
+                                    Click="OnHourDecreaseClick"
+                                    Background="#14FFFFFF"
+                                    BorderBrush="#30FFFFFF"
+                                    BorderThickness="1"
+                                    Cursor="Hand"
+                                    Content="▼" />
+                        </Grid>
+                    </Grid>
+
+                    <Grid Grid.Column="4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="30" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="MinuteTextBox"
+                                 Height="46"
+                                 VerticalContentAlignment="Center"
+                                 HorizontalContentAlignment="Center"
+                                 FontSize="20"
+                                 FontWeight="SemiBold"
+                                 Text="00"
+                                 Background="#10FFFFFF"
+                                 BorderBrush="#30FFFFFF"
+                                 BorderThickness="1"
+                                 Foreground="#1E2A33" />
+                        <Grid Grid.Column="1"
+                              Margin="6,0,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="4" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Button Grid.Row="0"
+                                    Click="OnMinuteIncreaseClick"
+                                    Background="#14FFFFFF"
+                                    BorderBrush="#30FFFFFF"
+                                    BorderThickness="1"
+                                    Cursor="Hand"
+                                    Content="▲" />
+                            <Button Grid.Row="2"
+                                    Click="OnMinuteDecreaseClick"
+                                    Background="#14FFFFFF"
+                                    BorderBrush="#30FFFFFF"
+                                    BorderThickness="1"
+                                    Cursor="Hand"
+                                    Content="▼" />
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="4"
+                    Padding="10"
+                    CornerRadius="14"
+                    Background="#14FFFFFF"
+                    BorderBrush="#30FFFFFF"
+                    BorderThickness="1">
+                <StackPanel>
+                    <WrapPanel>
+                        <CheckBox x:Name="SundayCheckBox" Margin="0,0,10,4" Content="일" />
+                        <CheckBox x:Name="MondayCheckBox" Margin="0,0,10,4" Content="월" />
+                        <CheckBox x:Name="TuesdayCheckBox" Margin="0,0,10,4" Content="화" />
+                        <CheckBox x:Name="WednesdayCheckBox" Margin="0,0,10,4" Content="수" />
+                        <CheckBox x:Name="ThursdayCheckBox" Margin="0,0,10,4" Content="목" />
+                        <CheckBox x:Name="FridayCheckBox" Margin="0,0,10,4" Content="금" />
+                        <CheckBox x:Name="SaturdayCheckBox" Margin="0,0,10,4" Content="토" />
+                    </WrapPanel>
+                    <TextBlock Margin="0,4,0,0"
+                               Text="요일을 선택하지 않으면 1회성 알람으로 저장됩니다."
+                               TextWrapping="Wrap"
+                               FontSize="12"
+                               Foreground="#5A6875" />
+                </StackPanel>
+            </Border>
+
+            <UniformGrid Grid.Row="8"
+                         Rows="1"
+                         Columns="2">
+                <Button Margin="0,0,6,0"
+                        Height="36"
+                        Click="OnCancelClick"
+                        Background="#14FFFFFF"
+                        BorderBrush="#30FFFFFF"
+                        BorderThickness="1"
+                        Cursor="Hand"
+                        Content="취소" />
+                <Button Height="36"
+                        Click="OnSaveClick"
+                        Background="#1E2A33"
+                        BorderBrush="#1E2A33"
+                        BorderThickness="1"
+                        Foreground="White"
+                        Cursor="Hand"
+                        Content="저장" />
+            </UniformGrid>
+        </Grid>
+    </Border>
+</Window>

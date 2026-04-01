@@ -21,6 +21,12 @@ namespace TopTaskBar;
 
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
+    private enum ToolTab
+    {
+        Timer,
+        Alarm
+    }
+
     private const double MinWindowSlotWidth = 28;
     private const double MaxWindowSlotWidth = 160;
     private const double WindowSlotWidthStep = 6;
@@ -34,7 +40,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private TopTaskBarSettings _settings;
     private readonly List<IntPtr> _windowOrder = [];
     private readonly List<LauncherAppItem> _allLauncherApps = [];
+    private readonly TimerToolController _timerToolController;
+    private readonly AlarmToolController _alarmToolController;
+    private readonly AlarmScheduler _alarmScheduler;
     private AppBarHelper? _appBarHelper;
+    private TimerCompletedWindow? _timerCompletedWindow;
+    private AlarmCompletedWindow? _alarmCompletedWindow;
+    private AlarmEditWindow? _alarmEditWindow;
     private DateTime _displayedMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private string _currentDateTimeText = DateTime.Now.ToString("MM-dd HH:mm");
     private string _searchText = string.Empty;
@@ -44,12 +56,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _wasLeftButtonDown;
     private bool _wasRightButtonDown;
     private DateTime _ignoreOutsideClickUntilUtc = DateTime.MinValue;
+    private ToolTab _selectedToolTab = ToolTab.Timer;
 
     public MainWindow()
     {
         InteractionLogger.Log($"Application started. LogPath={InteractionLogger.CurrentLogPath}");
         _settings = SettingsStore.Load();
         _windowSlotWidth = ClampWindowSlotWidth(_settings.WindowSlotWidth);
+        _timerToolController = new TimerToolController();
+        _alarmToolController = new AlarmToolController();
+        _alarmScheduler = new AlarmScheduler();
+        _timerToolController.Completed += OnTimerToolCompleted;
+        _alarmToolController.Completed += OnAlarmToolCompleted;
+        _alarmScheduler.AlarmTriggered += OnScheduledAlarmTriggered;
 
         InitializeComponent();
         DataContext = this;
@@ -99,11 +118,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     public ObservableCollection<LauncherAppItem> RecentLauncherApps { get; } = [];
 
+    public ObservableCollection<AlarmEntry> AlarmEntries { get; } = [];
+
+    public TimerToolState TimerTool => _timerToolController.State;
+
+    public AlarmToolState AlarmTool => _alarmToolController.State;
+
     public bool HasLauncherSearchResults => LauncherApps.Count > 0;
 
     public bool IsLauncherSearchActive => !string.IsNullOrWhiteSpace(SearchText);
 
     public bool HasRecentLauncherApps => RecentLauncherApps.Count > 0;
+
+    public bool IsTimerTabSelected => _selectedToolTab == ToolTab.Timer;
+
+    public bool IsAlarmTabSelected => _selectedToolTab == ToolTab.Alarm;
 
     public string SearchText
     {
@@ -201,6 +230,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         ApplyTheme();
         LoadLauncherApps();
+        LoadAlarmEntries();
+        RefreshAlarmSchedule();
         UpdateCurrentDateTime();
         RefreshOpenWindows();
         _refreshTimer.Start();
@@ -342,6 +373,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         e.Handled = true;
     }
 
+    private void OnTimerToolButtonPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        CloseCalendarPopup();
+
+        if (TimerToolPopup.IsOpen)
+        {
+            TimerToolPopup.IsOpen = false;
+            e.Handled = true;
+            return;
+        }
+
+        _ignoreOutsideClickUntilUtc = DateTime.UtcNow.AddMilliseconds(200);
+        TimerToolPopup.IsOpen = true;
+        e.Handled = true;
+    }
+
     private void OnCalendarPopupOpened(object sender, EventArgs e)
     {
         _wasLeftButtonDown = IsMouseButtonDown(VkLbutton);
@@ -356,7 +403,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void OnLauncherPopupOpened(object sender, EventArgs e)
     {
-        _appBarHelper?.SetInteractiveMode(true);
+        UpdateInteractivePopupMode();
         _wasLeftButtonDown = IsMouseButtonDown(VkLbutton);
         _wasRightButtonDown = IsMouseButtonDown(VkRbutton);
         _popupDismissTimer.Start();
@@ -370,18 +417,137 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void OnLauncherPopupClosed(object sender, EventArgs e)
     {
-        _appBarHelper?.SetInteractiveMode(false);
+        CloseTimerToolPopup();
+        UpdateInteractivePopupMode();
         SearchText = string.Empty;
 
-        if (!CalendarPopup.IsOpen)
+        if (!CalendarPopup.IsOpen && !TimerToolPopup.IsOpen)
         {
             _popupDismissTimer.Stop();
         }
     }
 
+    private void OnTimerToolPopupOpened(object sender, EventArgs e)
+    {
+        UpdateInteractivePopupMode();
+        _wasLeftButtonDown = IsMouseButtonDown(VkLbutton);
+        _wasRightButtonDown = IsMouseButtonDown(VkRbutton);
+        _popupDismissTimer.Start();
+        SyncTimerDurationInputsFromState();
+    }
+
+    private void OnTimerToolPopupClosed(object sender, EventArgs e)
+    {
+        UpdateInteractivePopupMode();
+
+        if (!CalendarPopup.IsOpen && !LauncherPopup.IsOpen)
+        {
+            _popupDismissTimer.Stop();
+        }
+    }
+
+    private void OnSelectTimerTabClick(object sender, RoutedEventArgs e)
+    {
+        SelectToolTab(ToolTab.Timer);
+    }
+
+    private void OnSelectAlarmTabClick(object sender, RoutedEventArgs e)
+    {
+        SelectToolTab(ToolTab.Alarm);
+    }
+
+    private void OnTimerDurationTextBoxLostFocus(object sender, RoutedEventArgs e)
+    {
+        ApplyTimerDurationFromInputs();
+    }
+
+    private void OnTimerDurationTextBoxKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter)
+        {
+            return;
+        }
+
+        ApplyTimerDurationFromInputs();
+        e.Handled = true;
+    }
+
+    private void OnTimerMinutesIncreaseClick(object sender, RoutedEventArgs e)
+    {
+        AdjustTimerDurationInputs(minutesDelta: 1, secondsDelta: 0);
+    }
+
+    private void OnTimerMinutesDecreaseClick(object sender, RoutedEventArgs e)
+    {
+        AdjustTimerDurationInputs(minutesDelta: -1, secondsDelta: 0);
+    }
+
+    private void OnTimerSecondsIncreaseClick(object sender, RoutedEventArgs e)
+    {
+        AdjustTimerDurationInputs(minutesDelta: 0, secondsDelta: 1);
+    }
+
+    private void OnTimerSecondsDecreaseClick(object sender, RoutedEventArgs e)
+    {
+        AdjustTimerDurationInputs(minutesDelta: 0, secondsDelta: -1);
+    }
+
+    private void OnTimerStartClick(object sender, RoutedEventArgs e)
+    {
+        _timerToolController.Start();
+    }
+
+    private void OnTimerPauseClick(object sender, RoutedEventArgs e)
+    {
+        _timerToolController.Pause();
+    }
+
+    private void OnTimerResetClick(object sender, RoutedEventArgs e)
+    {
+        _timerToolController.Reset();
+        SyncTimerDurationInputsFromState();
+    }
+
+    private void OnTimerToolCompleted(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            TimerToolPopup.IsOpen = true;
+            ShowTimerCompletedWindow();
+        }));
+    }
+
+    private void OnAlarmToolCompleted(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            SelectToolTab(ToolTab.Alarm);
+            TimerToolPopup.IsOpen = true;
+            ShowAlarmCompletedWindow();
+        }));
+    }
+
+    private void OnScheduledAlarmTriggered(object? sender, AlarmTriggeredEventArgs e)
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (e.Alarm.IsOneTime)
+            {
+                e.Alarm.Enabled = false;
+                SettingsStore.Save(_settings);
+                LoadAlarmEntries();
+            }
+
+            SelectToolTab(ToolTab.Alarm);
+            TimerToolPopup.IsOpen = true;
+            ShowAlarmCompletedWindow(e.Alarm.Label);
+            RefreshAlarmSchedule();
+        }));
+    }
+
     private void OnPopupDismissTimerTick(object? sender, EventArgs e)
     {
-        if (!CalendarPopup.IsOpen && !LauncherPopup.IsOpen)
+        if (!CalendarPopup.IsOpen && !LauncherPopup.IsOpen && !TimerToolPopup.IsOpen)
         {
             _popupDismissTimer.Stop();
             return;
@@ -408,15 +574,29 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var isOverCalendar = IsScreenPointWithinElement(CalendarPopupRoot, cursorPosition);
         var isOverLauncherButton = IsScreenPointWithinElement(LauncherButton, cursorPosition);
         var isOverLauncher = IsScreenPointWithinElement(LauncherPopupRoot, cursorPosition);
+        var isOverTimerButton = IsScreenPointWithinElement(TimerToolButton, cursorPosition);
+        var isOverTimerPopup = IsScreenPointWithinElement(TimerToolPopupRoot, cursorPosition);
+        var isOverAlarmEditWindow = IsScreenPointWithinWindow(_alarmEditWindow, cursorPosition);
+        var isWithinLauncherExperience =
+            isOverLauncherButton ||
+            isOverLauncher ||
+            isOverTimerButton ||
+            isOverTimerPopup ||
+            isOverAlarmEditWindow;
 
         if (CalendarPopup.IsOpen && !isOverDateButton && !isOverCalendar)
         {
             CalendarPopup.IsOpen = false;
         }
 
-        if (LauncherPopup.IsOpen && !isOverLauncherButton && !isOverLauncher)
+        if (LauncherPopup.IsOpen && !isWithinLauncherExperience)
         {
             LauncherPopup.IsOpen = false;
+        }
+
+        if (TimerToolPopup.IsOpen && !isOverTimerButton && !isOverTimerPopup && !isOverAlarmEditWindow)
+        {
+            TimerToolPopup.IsOpen = false;
         }
     }
 
@@ -646,6 +826,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _settingsWatcher.Renamed -= OnSettingsFileRenamed;
         _settingsWatcher.Dispose();
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+        _timerToolController.Completed -= OnTimerToolCompleted;
+        _alarmToolController.Completed -= OnAlarmToolCompleted;
+        _alarmScheduler.AlarmTriggered -= OnScheduledAlarmTriggered;
+        _timerToolController.Dispose();
+        _alarmToolController.Dispose();
+        _alarmScheduler.Dispose();
+        _alarmEditWindow?.Close();
+        _timerCompletedWindow?.Close();
+        _alarmCompletedWindow?.Close();
         _appBarHelper?.Dispose();
         _appBarHelper = null;
     }
@@ -691,6 +880,85 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         RefreshLauncherAppsView();
         SyncRecentLauncherApps();
+    }
+
+    private void LoadAlarmEntries()
+    {
+        AlarmEntries.Clear();
+
+        foreach (var alarm in _settings.AlarmEntries)
+        {
+            AlarmEntries.Add(alarm);
+        }
+
+        UpdateAlarmNextOccurrences();
+    }
+
+    private void RefreshAlarmSchedule()
+    {
+        _alarmScheduler.SetAlarms(_settings.AlarmEntries);
+        UpdateAlarmNextOccurrences();
+    }
+
+    private void UpdateAlarmNextOccurrences()
+    {
+        var now = DateTime.Now;
+
+        foreach (var alarm in _settings.AlarmEntries)
+        {
+            alarm.NextOccurrence = _alarmScheduler.GetNextOccurrence(alarm, now);
+        }
+    }
+
+    private void OnAlarmEnabledChanged(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox { DataContext: AlarmEntry alarm })
+        {
+            return;
+        }
+
+        var target = _settings.AlarmEntries.FirstOrDefault(entry => entry.Id == alarm.Id);
+        if (target is null)
+        {
+            return;
+        }
+
+        target.Enabled = alarm.Enabled;
+        SettingsStore.Save(_settings);
+        RefreshAlarmSchedule();
+    }
+
+    private void OnEditAlarmClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: AlarmEntry alarm })
+        {
+            return;
+        }
+
+        var target = _settings.AlarmEntries.FirstOrDefault(entry => entry.Id == alarm.Id);
+        if (target is null)
+        {
+            return;
+        }
+
+        var editWindow = new AlarmEditWindow(target)
+        {
+            Owner = this
+        };
+
+        _alarmEditWindow = editWindow;
+        editWindow.Closed += OnAlarmEditWindowClosed;
+
+        var result = editWindow.ShowDialog();
+        if (result != true)
+        {
+            return;
+        }
+
+        target.ApplyFrom(editWindow.EditedAlarm);
+        SettingsStore.Save(_settings);
+        LoadAlarmEntries();
+        RefreshAlarmSchedule();
     }
 
     private void RefreshLauncherAppsView()
@@ -840,6 +1108,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         LoadLauncherApps();
+        LoadAlarmEntries();
+        RefreshAlarmSchedule();
     }
 
     private void CloseCalendarPopup()
@@ -856,6 +1126,162 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             LauncherPopup.IsOpen = false;
         }
+
+        CloseTimerToolPopup();
+    }
+
+    private void CloseTimerToolPopup()
+    {
+        if (TimerToolPopup.IsOpen)
+        {
+            TimerToolPopup.IsOpen = false;
+        }
+    }
+
+    private void UpdateInteractivePopupMode()
+    {
+        _appBarHelper?.SetInteractiveMode(LauncherPopup.IsOpen || TimerToolPopup.IsOpen);
+    }
+
+    private void SelectToolTab(ToolTab tab)
+    {
+        if (_selectedToolTab == tab)
+        {
+            return;
+        }
+
+        _selectedToolTab = tab;
+        OnPropertyChanged(nameof(IsTimerTabSelected));
+        OnPropertyChanged(nameof(IsAlarmTabSelected));
+
+        if (tab == ToolTab.Timer)
+        {
+            SyncTimerDurationInputsFromState();
+        }
+    }
+
+    private void ShowTimerCompletedWindow()
+    {
+        if (_timerCompletedWindow is null || !_timerCompletedWindow.IsLoaded)
+        {
+            _timerCompletedWindow = new TimerCompletedWindow();
+            _timerCompletedWindow.Closed += OnTimerCompletedWindowClosed;
+            _timerCompletedWindow.Show();
+            return;
+        }
+
+        if (!_timerCompletedWindow.IsVisible)
+        {
+            _timerCompletedWindow.Show();
+        }
+
+        _timerCompletedWindow.Activate();
+    }
+
+    private void OnTimerCompletedWindowClosed(object? sender, EventArgs e)
+    {
+        if (_timerCompletedWindow is not null)
+        {
+            _timerCompletedWindow.Closed -= OnTimerCompletedWindowClosed;
+        }
+
+        _timerCompletedWindow = null;
+    }
+
+    private void ShowAlarmCompletedWindow(string alarmLabel = "알람")
+    {
+        if (_alarmCompletedWindow is null || !_alarmCompletedWindow.IsLoaded)
+        {
+            _alarmCompletedWindow = new AlarmCompletedWindow();
+            _alarmCompletedWindow.Closed += OnAlarmCompletedWindowClosed;
+            _alarmCompletedWindow.SetAlarmLabel(alarmLabel);
+            _alarmCompletedWindow.Show();
+            return;
+        }
+
+        _alarmCompletedWindow.SetAlarmLabel(alarmLabel);
+
+        if (!_alarmCompletedWindow.IsVisible)
+        {
+            _alarmCompletedWindow.Show();
+        }
+
+        _alarmCompletedWindow.Activate();
+    }
+
+    private void OnAlarmCompletedWindowClosed(object? sender, EventArgs e)
+    {
+        if (_alarmCompletedWindow is not null)
+        {
+            _alarmCompletedWindow.Closed -= OnAlarmCompletedWindowClosed;
+        }
+
+        _alarmCompletedWindow = null;
+    }
+
+    private void OnAlarmEditWindowClosed(object? sender, EventArgs e)
+    {
+        if (_alarmEditWindow is not null)
+        {
+            _alarmEditWindow.Closed -= OnAlarmEditWindowClosed;
+        }
+
+        _alarmEditWindow = null;
+    }
+
+    private void SyncTimerDurationInputsFromState()
+    {
+        var duration = TimerTool.SelectedDuration;
+        TimerMinutesTextBox.Text = ((int)duration.TotalMinutes).ToString("00");
+        TimerSecondsTextBox.Text = duration.Seconds.ToString("00");
+    }
+
+    private void ApplyTimerDurationFromInputs()
+    {
+        var currentDuration = TimerTool.SelectedDuration;
+        var minutes = ParseTimerDurationPart(TimerMinutesTextBox.Text, (int)currentDuration.TotalMinutes, 0, 999);
+        var seconds = ParseTimerDurationPart(TimerSecondsTextBox.Text, currentDuration.Seconds, 0, 59);
+        var duration = new TimeSpan(0, minutes, seconds);
+
+        _timerToolController.SetPreset(duration);
+        SyncTimerDurationInputsFromState();
+    }
+
+    private void AdjustTimerDurationInputs(int minutesDelta, int secondsDelta)
+    {
+        var currentDuration = TimerTool.SelectedDuration;
+        var minutes = ParseTimerDurationPart(TimerMinutesTextBox.Text, (int)currentDuration.TotalMinutes, 0, 999);
+        var seconds = ParseTimerDurationPart(TimerSecondsTextBox.Text, currentDuration.Seconds, 0, 59);
+
+        var totalSeconds = (minutes * 60) + seconds + (minutesDelta * 60) + secondsDelta;
+        if (totalSeconds < 0)
+        {
+            totalSeconds = 0;
+        }
+
+        var adjustedDuration = TimeSpan.FromSeconds(totalSeconds);
+        _timerToolController.SetPreset(adjustedDuration);
+        SyncTimerDurationInputsFromState();
+    }
+
+    private static int ParseTimerDurationPart(string? text, int fallback, int min, int max)
+    {
+        if (!int.TryParse(text, out var parsed))
+        {
+            parsed = fallback;
+        }
+
+        if (parsed < min)
+        {
+            return min;
+        }
+
+        if (parsed > max)
+        {
+            return max;
+        }
+
+        return parsed;
     }
 
     private static bool IsScreenPointWithinElement(FrameworkElement? element, NativePoint screenPoint)
@@ -867,6 +1293,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         var topLeft = element.PointToScreen(new Point(0, 0));
         var bounds = new Rect(topLeft.X, topLeft.Y, element.ActualWidth, element.ActualHeight);
+        return bounds.Contains(new Point(screenPoint.X, screenPoint.Y));
+    }
+
+    private static bool IsScreenPointWithinWindow(Window? window, NativePoint screenPoint)
+    {
+        if (window is null || !window.IsLoaded || !window.IsVisible || window.ActualWidth <= 0 || window.ActualHeight <= 0)
+        {
+            return false;
+        }
+
+        var topLeft = window.PointToScreen(new Point(0, 0));
+        var bounds = new Rect(topLeft.X, topLeft.Y, window.ActualWidth, window.ActualHeight);
         return bounds.Contains(new Point(screenPoint.X, screenPoint.Y));
     }
 

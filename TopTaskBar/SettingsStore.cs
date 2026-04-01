@@ -46,6 +46,12 @@ internal static class SettingsStore
                 shouldSave = true;
             }
 
+            if (settings.AlarmEntries is null || settings.AlarmEntries.Count == 0)
+            {
+                settings.AlarmEntries = CreateDefaultAlarmEntries();
+                shouldSave = true;
+            }
+
             if (shouldSave)
             {
                 Save(settings);
@@ -72,7 +78,8 @@ internal static class SettingsStore
         {
             WindowSlotWidth = 42,
             PinnedApps = CreateDefaultPinnedApps(),
-            RecentLauncherPaths = []
+            RecentLauncherPaths = [],
+            AlarmEntries = CreateDefaultAlarmEntries()
         };
     }
 
@@ -113,6 +120,37 @@ internal static class SettingsStore
                 Name = "! Google",
                 Path = "https://www.google.com",
                 WorkingDirectory = string.Empty
+            }
+        ];
+    }
+
+    private static List<AlarmEntry> CreateDefaultAlarmEntries()
+    {
+        return
+        [
+            new AlarmEntry
+            {
+                Label = "기상",
+                Hour24 = 7,
+                Minute = 30,
+                Enabled = false,
+                DaysOfWeekMask = AlarmDayOfWeek.None
+            },
+            new AlarmEntry
+            {
+                Label = "출발",
+                Hour24 = 8,
+                Minute = 40,
+                Enabled = false,
+                DaysOfWeekMask = AlarmDayOfWeek.None
+            },
+            new AlarmEntry
+            {
+                Label = "복습",
+                Hour24 = 21,
+                Minute = 0,
+                Enabled = false,
+                DaysOfWeekMask = AlarmDayOfWeek.None
             }
         ];
     }
