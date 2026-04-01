@@ -12,8 +12,6 @@ public sealed class CalendarDayItem
 
     public bool IsToday { get; init; }
 
-    public bool IsSelected { get; init; }
-
     public bool IsSunday => Date.DayOfWeek == DayOfWeek.Sunday;
 
     public bool IsSaturday => Date.DayOfWeek == DayOfWeek.Saturday;

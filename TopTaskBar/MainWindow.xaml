@@ -22,6 +22,14 @@
             <Setter Property="ToolTipService.BetweenShowDelay" Value="100" />
         </Style>
 
+        <ContextMenu x:Key="RunningAppMenu"
+                     Opened="OnRunningAppMenuOpened"
+                     Closed="OnRunningAppMenuClosed">
+            <MenuItem Header="런처에 앱 추가"
+                      DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                      Click="OnAddRunningAppToLauncherClick" />
+        </ContextMenu>
+
         <ContextMenu x:Key="SettingsMenu">
             <MenuItem Header="Window Slot Width" IsEnabled="False" />
             <MenuItem Header="Narrower" Click="OnDecreaseWidthClick" />
@@ -41,30 +49,11 @@
             ContextMenu="{StaticResource SettingsMenu}">
         <Grid Margin="14,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="14" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Column="0"
-                        Orientation="Horizontal"
-                        VerticalAlignment="Center">
-                <Border Width="28"
-                        Height="28"
-                        CornerRadius="8"
-                        Background="{Binding AccentBackgroundBrush}"
-                        BorderBrush="{Binding AccentBorderBrush}"
-                        BorderThickness="1">
-                    <Viewbox>
-                        <TextBlock Text="T"
-                                   FontWeight="SemiBold"
-                                   Foreground="{Binding AccentForegroundBrush}" />
-                    </Viewbox>
-                </Border>
-            </StackPanel>
-
-            <Border Grid.Column="2"
+            <Border Grid.Column="0"
                     Height="40"
                     VerticalAlignment="Center"
                     CornerRadius="20"
@@ -92,6 +81,41 @@
                                   HorizontalScrollBarVisibility="Hidden">
                         <StackPanel Orientation="Horizontal"
                                     HorizontalAlignment="Center">
+                            <Button x:Name="LauncherButton"
+                                    Width="34"
+                                    Height="30"
+                                    Margin="0,0,6,0"
+                                    Padding="0"
+                                    PreviewMouseLeftButtonDown="OnLauncherButtonPreviewMouseLeftButtonDown"
+                                    Background="{Binding AccentBackgroundBrush}"
+                                    BorderBrush="{Binding AccentBorderBrush}"
+                                    BorderThickness="1"
+                                    Cursor="Hand">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="Root"
+                                                Background="{TemplateBinding Background}"
+                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                CornerRadius="9">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Root" Property="Background" Value="#70FFFFFF" />
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter TargetName="Root" Property="Background" Value="#90FFFFFF" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <TextBlock Text="T"
+                                           FontWeight="SemiBold"
+                                           Foreground="{Binding AccentForegroundBrush}" />
+                            </Button>
+
                             <ItemsControl x:Name="WindowItemsControl"
                                           ItemsSource="{Binding OpenWindows}">
                                 <ItemsControl.ItemsPanel>
@@ -106,6 +130,8 @@
                                                 Height="30"
                                                 Margin="0,0,6,0"
                                                 Padding="0"
+                                                PreviewMouseRightButtonDown="OnWindowButtonPreviewMouseRightButtonDown"
+                                                ContextMenu="{StaticResource RunningAppMenu}"
                                                 ToolTip="{Binding Title}"
                                                 Background="#12FFFFFF"
                                                 BorderBrush="#52FFFFFF"
@@ -264,14 +290,15 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate DataType="{x:Type local:CalendarDayItem}">
-                                                    <Button Click="OnCalendarDayClick"
-                                                            Margin="2"
+                                                    <Button Margin="2"
                                                             Height="38"
                                                             Padding="0"
                                                             Background="Transparent"
                                                             BorderBrush="Transparent"
                                                             BorderThickness="1"
-                                                            Cursor="Hand">
+                                                            Cursor="Arrow"
+                                                            IsHitTestVisible="False"
+                                                            Focusable="False">
                                                         <Button.Template>
                                                             <ControlTemplate TargetType="Button">
                                                                 <Border x:Name="Root"
@@ -298,18 +325,10 @@
                                                                         <Setter TargetName="DayText" Property="Foreground" Value="#60A5FA" />
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding IsToday}" Value="True">
-                                                                        <Setter TargetName="Root" Property="BorderBrush" Value="{Binding DataContext.AccentBorderBrush, RelativeSource={RelativeSource AncestorType=Window}}" />
-                                                                        <Setter TargetName="Root" Property="BorderThickness" Value="1.5" />
-                                                                    </DataTrigger>
-                                                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
                                                                         <Setter TargetName="Root" Property="Background" Value="{Binding DataContext.AccentBackgroundBrush, RelativeSource={RelativeSource AncestorType=Window}}" />
                                                                         <Setter TargetName="Root" Property="BorderBrush" Value="{Binding DataContext.AccentBorderBrush, RelativeSource={RelativeSource AncestorType=Window}}" />
                                                                         <Setter TargetName="DayText" Property="Foreground" Value="{Binding DataContext.PrimaryForegroundBrush, RelativeSource={RelativeSource AncestorType=Window}}" />
                                                                     </DataTrigger>
-                                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                                        <Setter TargetName="Root" Property="Background" Value="#12FFFFFF" />
-                                                                        <Setter TargetName="Root" Property="BorderBrush" Value="#30FFFFFF" />
-                                                                    </Trigger>
                                                                 </ControlTemplate.Triggers>
                                                             </ControlTemplate>
                                                         </Button.Template>
@@ -320,12 +339,328 @@
                                     </StackPanel>
                                 </Border>
                             </Popup>
+
+                            <Popup x:Name="LauncherPopup"
+                                   PlacementTarget="{Binding ElementName=LauncherButton}"
+                                   Placement="Bottom"
+                                   VerticalOffset="8"
+                                   StaysOpen="True"
+                                   AllowsTransparency="True"
+                                   PopupAnimation="Fade"
+                                   Opened="OnLauncherPopupOpened"
+                                   Closed="OnLauncherPopupClosed">
+                                <Border x:Name="LauncherPopupRoot"
+                                        Width="280"
+                                        Padding="14"
+                                        CornerRadius="16"
+                                        Background="#ECF3F5F8"
+                                        BorderBrush="{Binding BarBorderBrush}"
+                                        BorderThickness="1"
+                                        SnapsToDevicePixels="True">
+                                    <StackPanel>
+                                        <TextBlock Text="Launcher"
+                                                   FontSize="15"
+                                                   FontWeight="Medium"
+                                                   Foreground="{Binding PrimaryForegroundBrush}" />
+
+                                        <TextBox x:Name="LauncherSearchBox"
+                                                 Margin="0,8,0,0"
+                                                 Padding="10,6"
+                                                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                                 FontSize="12"
+                                                 Foreground="{Binding PrimaryForegroundBrush}"
+                                                 Background="#1AFFFFFF"
+                                                 BorderBrush="#5CFFFFFF"
+                                                 BorderThickness="1"
+                                                 CaretBrush="{Binding PrimaryForegroundBrush}"
+                                                 ToolTip="런처 항목 검색" />
+
+                                        <StackPanel Margin="0,10,0,0">
+                                            <StackPanel.Style>
+                                                <Style TargetType="StackPanel">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasRecentLauncherApps}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </StackPanel.Style>
+
+                                            <TextBlock Text="Recent"
+                                                       Margin="2,0,0,6"
+                                                       FontSize="11"
+                                                       Foreground="{Binding MutedForegroundBrush}" />
+
+                                            <ItemsControl ItemsSource="{Binding RecentLauncherApps}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal" />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate DataType="{x:Type local:LauncherAppItem}">
+                                                        <Button Click="OnLauncherAppClick"
+                                                                Width="32"
+                                                                Height="32"
+                                                                Margin="0,0,6,0"
+                                                                Padding="0"
+                                                                ToolTip="{Binding Name}"
+                                                                Background="#12FFFFFF"
+                                                                BorderBrush="#36FFFFFF"
+                                                                BorderThickness="1"
+                                                                Cursor="Hand">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="Root"
+                                                                            Background="{TemplateBinding Background}"
+                                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                                                            CornerRadius="10">
+                                                                        <Grid>
+                                                                            <Image Width="16"
+                                                                                   Height="16"
+                                                                                   HorizontalAlignment="Center"
+                                                                                   VerticalAlignment="Center"
+                                                                                   Source="{Binding Icon}"
+                                                                                   Stretch="Uniform" />
+                                                                            <TextBlock Text="{Binding FallbackGlyph}"
+                                                                                       HorizontalAlignment="Center"
+                                                                                       VerticalAlignment="Center"
+                                                                                       Foreground="{Binding DataContext.PrimaryForegroundBrush, RelativeSource={RelativeSource AncestorType=Window}}">
+                                                                                <TextBlock.Style>
+                                                                                    <Style TargetType="TextBlock">
+                                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                                        <Style.Triggers>
+                                                                                            <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                                                                                                <Setter Property="Visibility" Value="Visible" />
+                                                                                            </DataTrigger>
+                                                                                        </Style.Triggers>
+                                                                                    </Style>
+                                                                                </TextBlock.Style>
+                                                                            </TextBlock>
+                                                                        </Grid>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="Root" Property="Background" Value="#20FFFFFF" />
+                                                                            <Setter TargetName="Root" Property="BorderBrush" Value="#54FFFFFF" />
+                                                                        </Trigger>
+                                                                        <Trigger Property="IsPressed" Value="True">
+                                                                            <Setter TargetName="Root" Property="Background" Value="#2AFFFFFF" />
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+
+                                        <ItemsControl Margin="0,10,0,0"
+                                                      ItemsSource="{Binding LauncherApps}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type local:LauncherAppItem}">
+                                                    <Button Click="OnLauncherAppClick"
+                                                            Margin="0,0,0,4"
+                                                            Padding="0"
+                                                            Background="Transparent"
+                                                            BorderBrush="Transparent"
+                                                            BorderThickness="0"
+                                                            Cursor="Hand">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border x:Name="Root"
+                                                                        Padding="8,4"
+                                                                        CornerRadius="12"
+                                                                        Background="#10FFFFFF"
+                                                                        BorderBrush="#24FFFFFF"
+                                                                        BorderThickness="1">
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="Auto" />
+                                                                            <ColumnDefinition Width="10" />
+                                                                            <ColumnDefinition Width="*" />
+                                                                        </Grid.ColumnDefinitions>
+
+                                                                        <Border Width="24"
+                                                                                Height="24"
+                                                                                CornerRadius="8"
+                                                                                Background="#16FFFFFF"
+                                                                                BorderBrush="#24FFFFFF"
+                                                                                BorderThickness="1">
+                                                                            <Grid>
+                                                                                <Image Width="15"
+                                                                                       Height="15"
+                                                                                       HorizontalAlignment="Center"
+                                                                                       VerticalAlignment="Center"
+                                                                                       Source="{Binding Icon}"
+                                                                                       Stretch="Uniform" />
+                                                                    <TextBlock Text="{Binding FallbackGlyph}"
+                                                                               HorizontalAlignment="Center"
+                                                                               VerticalAlignment="Center"
+                                                                               Foreground="{Binding DataContext.PrimaryForegroundBrush, RelativeSource={RelativeSource AncestorType=Window}}">
+                                                                        <TextBlock.Style>
+                                                                            <Style TargetType="TextBlock">
+                                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </TextBlock.Style>
+                                                                    </TextBlock>
+                                                                </Grid>
+                                                            </Border>
+
+                                                                        <StackPanel Grid.Column="2">
+                                                                            <TextBlock Text="{Binding Name}"
+                                                                                   FontSize="13"
+                                                                                      FontWeight="Medium"
+                                                                                       VerticalAlignment="Center"
+                                                                                       Foreground="{Binding DataContext.PrimaryForegroundBrush, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                                        </StackPanel>
+                                                                    </Grid>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="Root" Property="Background" Value="#18FFFFFF" />
+                                                                        <Setter TargetName="Root" Property="BorderBrush" Value="#44FFFFFF" />
+                                                                    </Trigger>
+                                                                    <Trigger Property="IsPressed" Value="True">
+                                                                        <Setter TargetName="Root" Property="Background" Value="#24FFFFFF" />
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                        <TextBlock Margin="4,8,4,0"
+                                                   Text="검색 결과가 없습니다."
+                                                   FontSize="12"
+                                                   Foreground="{Binding MutedForegroundBrush}"
+                                                   HorizontalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding IsLauncherSearchActive}" Value="True" />
+                                                                <Condition Binding="{Binding HasLauncherSearchResults}" Value="False" />
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </MultiDataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+
+                                        <Grid Margin="0,8,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="8" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <Button Grid.Column="0"
+                                                    Height="34"
+                                                    Padding="0"
+                                                    Click="OnAddLauncherAppClick"
+                                                    Background="#14FFFFFF"
+                                                    BorderBrush="#30FFFFFF"
+                                                    BorderThickness="1"
+                                                    Cursor="Hand">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border x:Name="Root"
+                                                                Background="{TemplateBinding Background}"
+                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                                CornerRadius="12">
+                                                            <ContentPresenter HorizontalAlignment="Center"
+                                                                              VerticalAlignment="Center" />
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="Root" Property="Background" Value="#1EFFFFFF" />
+                                                                <Setter TargetName="Root" Property="BorderBrush" Value="#46FFFFFF" />
+                                                            </Trigger>
+                                                            <Trigger Property="IsPressed" Value="True">
+                                                                <Setter TargetName="Root" Property="Background" Value="#28FFFFFF" />
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                                <StackPanel Orientation="Horizontal"
+                                                            HorizontalAlignment="Center">
+                                                    <TextBlock Text="+"
+                                                               FontSize="15"
+                                                               Margin="0,0,6,0"
+                                                               Foreground="{Binding PrimaryForegroundBrush}" />
+                                                    <TextBlock Text="앱 추가"
+                                                               FontSize="13"
+                                                               FontWeight="Medium"
+                                                               Foreground="{Binding PrimaryForegroundBrush}" />
+                                                </StackPanel>
+                                            </Button>
+
+                                            <Button Grid.Column="2"
+                                                    Height="34"
+                                                    Padding="0"
+                                                    Click="OnEditLauncherSettingsClick"
+                                                    Background="#14FFFFFF"
+                                                    BorderBrush="#30FFFFFF"
+                                                    BorderThickness="1"
+                                                    Cursor="Hand">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border x:Name="Root"
+                                                                Background="{TemplateBinding Background}"
+                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                                CornerRadius="12">
+                                                            <ContentPresenter HorizontalAlignment="Center"
+                                                                              VerticalAlignment="Center" />
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="Root" Property="Background" Value="#1EFFFFFF" />
+                                                                <Setter TargetName="Root" Property="BorderBrush" Value="#46FFFFFF" />
+                                                            </Trigger>
+                                                            <Trigger Property="IsPressed" Value="True">
+                                                                <Setter TargetName="Root" Property="Background" Value="#28FFFFFF" />
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                                <StackPanel Orientation="Horizontal"
+                                                            HorizontalAlignment="Center">
+                                                    <TextBlock Text="{}"
+                                                               FontSize="12"
+                                                               Margin="0,0,6,0"
+                                                               Foreground="{Binding PrimaryForegroundBrush}" />
+                                                    <TextBlock Text="JSON 수정"
+                                                               FontSize="13"
+                                                               FontWeight="Medium"
+                                                               Foreground="{Binding PrimaryForegroundBrush}" />
+                                                </StackPanel>
+                                            </Button>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </Popup>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
             </Border>
 
-            <StackPanel Grid.Column="3"
+            <StackPanel Grid.Column="1"
                         Orientation="Horizontal"
                         VerticalAlignment="Center">
                 <Button Width="26"

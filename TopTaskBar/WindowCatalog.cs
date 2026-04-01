@@ -172,6 +172,30 @@ internal static class WindowCatalog
             hwnd == IntPtr.Zero ? string.Empty : GetWindowTitle(hwnd));
     }
 
+    public static bool TryGetExecutablePath(IntPtr hwnd, out string executablePath)
+    {
+        executablePath = string.Empty;
+
+        if (hwnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        var targetHwnd = GetActionableWindow(hwnd);
+        if (targetHwnd == IntPtr.Zero)
+        {
+            targetHwnd = hwnd;
+        }
+
+        _ = GetWindowThreadProcessId(targetHwnd, out var processId);
+        if (processId == 0)
+        {
+            return false;
+        }
+
+        return TryGetExecutablePath(processId, out executablePath);
+    }
+
     private static IntPtr GetComparableWindow(IntPtr hwnd)
     {
         if (hwnd == IntPtr.Zero)
@@ -299,15 +323,47 @@ internal static class WindowCatalog
     private static ImageSource? GetProcessIcon(IntPtr hwnd)
     {
         _ = GetWindowThreadProcessId(hwnd, out var processId);
-        if (processId == 0)
+        if (!TryGetExecutablePath(processId, out var filePath))
         {
             return null;
+        }
+
+        var fileInfo = new ShFileInfo();
+        var result = SHGetFileInfo(
+            filePath,
+            0,
+            out fileInfo,
+            (uint)Marshal.SizeOf<ShFileInfo>(),
+            ShgfiIcon | ShgfiLargeIcon);
+
+        if (result == IntPtr.Zero || fileInfo.hIcon == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            return CreateImageSourceFromIcon(fileInfo.hIcon);
+        }
+        finally
+        {
+            DestroyIcon(fileInfo.hIcon);
+        }
+    }
+
+    private static bool TryGetExecutablePath(uint processId, out string executablePath)
+    {
+        executablePath = string.Empty;
+
+        if (processId == 0)
+        {
+            return false;
         }
 
         var processHandle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
         if (processHandle == IntPtr.Zero)
         {
-            return null;
+            return false;
         }
 
         try
@@ -316,31 +372,11 @@ internal static class WindowCatalog
             var builder = new StringBuilder(capacity);
             if (!QueryFullProcessImageName(processHandle, 0, builder, ref capacity))
             {
-                return null;
+                return false;
             }
 
-            var filePath = builder.ToString();
-            var fileInfo = new ShFileInfo();
-            var result = SHGetFileInfo(
-                filePath,
-                0,
-                out fileInfo,
-                (uint)Marshal.SizeOf<ShFileInfo>(),
-                ShgfiIcon | ShgfiLargeIcon);
-
-            if (result == IntPtr.Zero || fileInfo.hIcon == IntPtr.Zero)
-            {
-                return null;
-            }
-
-            try
-            {
-                return CreateImageSourceFromIcon(fileInfo.hIcon);
-            }
-            finally
-            {
-                DestroyIcon(fileInfo.hIcon);
-            }
+            executablePath = builder.ToString();
+            return !string.IsNullOrWhiteSpace(executablePath);
         }
         finally
         {

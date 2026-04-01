@@ -95,6 +95,57 @@ TopTaskBar\bin\Release\manual-publish\win-x64
 
 설정은 로컬에 저장됩니다.
 
+## 런처 항목 추가
+
+런처에는 실행 파일뿐 아니라 폴더, URL, 바로가기도 넣을 수 있습니다.
+
+### 실행 파일과 바로가기
+
+- 런처 하단의 `앱 추가` 버튼을 누릅니다.
+- 파일 선택 창에서 `.exe` 또는 `.lnk` 파일을 고릅니다.
+- 선택한 항목이 런처 목록에 바로 추가됩니다.
+
+예:
+- 바탕화면의 `Visual Studio 2022.lnk`
+- 시작 메뉴 폴더 안의 프로그램 바로가기
+
+### 폴더와 URL
+
+- 런처 하단의 `JSON 수정` 버튼으로 `settings.json`을 엽니다.
+- `PinnedApps`에 항목을 직접 추가합니다.
+- 저장하면 파일 변경 감시로 앱에 바로 반영됩니다.
+
+폴더 예:
+
+```json
+{
+  "Name": "! Documents",
+  "Path": "C:\\Users\\USER\\Documents",
+  "Arguments": "",
+  "WorkingDirectory": "C:\\Users\\USER\\Documents"
+}
+```
+
+URL 예:
+
+```json
+{
+  "Name": "! Google",
+  "Path": "https://www.google.com",
+  "Arguments": "",
+  "WorkingDirectory": ""
+}
+```
+
+정렬 참고:
+- 런처 항목은 이름 기준으로 정렬됩니다.
+- 필요하면 `!` 같은 특수문자를 이름 앞에 붙여 위쪽으로 올릴 수 있습니다.
+
+### 최근 실행 앱
+
+- 런처로 실행한 항목은 상단 `Recent` 아이콘 영역에 최대 5개까지 표시됩니다.
+- 최근 목록은 `settings.json`의 `RecentLauncherPaths`에 저장되며, 앱을 다시 실행해도 유지됩니다.
+
 ## 참고
 
 - `bin`, `obj`, `.vs` 는 Git에 포함하지 않도록 `.gitignore` 가 설정되어 있습니다.

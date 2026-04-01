@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System;
 using System.IO;
 
@@ -17,11 +16,6 @@ internal static class InteractionLogger
 
     public static void Log(string message)
     {
-        if (!Debugger.IsAttached)
-        {
-            return;
-        }
-
         var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {message}";
 
         lock (SyncRoot)

@@ -21,6 +21,7 @@ internal sealed class AppBarHelper : IDisposable
     private readonly Window _window;
     private HwndSource? _source;
     private bool _isRegistered;
+    private bool _noActivateEnabled = true;
 
     public AppBarHelper(Window window)
     {
@@ -36,7 +37,7 @@ internal sealed class AppBarHelper : IDisposable
         }
 
         _source.AddHook(WndProc);
-        ApplyNoActivateStyle(hwnd);
+        ApplyNoActivateStyle(hwnd, enabled: true);
         RegisterAppBar(hwnd);
         UpdateAppBarBounds(hwnd);
     }
@@ -54,6 +55,17 @@ internal sealed class AppBarHelper : IDisposable
             SHAppBarMessage(AppBarMessage.Remove, ref data);
             _isRegistered = false;
         }
+    }
+
+    public void SetInteractiveMode(bool isInteractive)
+    {
+        if (_source is null)
+        {
+            return;
+        }
+
+        _noActivateEnabled = !isInteractive;
+        ApplyNoActivateStyle(_source.Handle, _noActivateEnabled);
     }
 
     private void RegisterAppBar(IntPtr hwnd)
@@ -119,8 +131,11 @@ internal sealed class AppBarHelper : IDisposable
     {
         if (msg == WmMouseActivate)
         {
-            handled = true;
-            return new IntPtr(MaNoActivate);
+            if (_noActivateEnabled)
+            {
+                handled = true;
+                return new IntPtr(MaNoActivate);
+            }
         }
 
         if (msg == WmDpiChanged)
@@ -136,10 +151,13 @@ internal sealed class AppBarHelper : IDisposable
         return IntPtr.Zero;
     }
 
-    private static void ApplyNoActivateStyle(IntPtr hwnd)
+    private static void ApplyNoActivateStyle(IntPtr hwnd, bool enabled)
     {
         var exStyle = GetWindowLong(hwnd, GwlExstyle);
-        SetWindowLong(hwnd, GwlExstyle, exStyle | WsExNoActivate);
+        var updatedStyle = enabled
+            ? exStyle | WsExNoActivate
+            : exStyle & ~WsExNoActivate;
+        SetWindowLong(hwnd, GwlExstyle, updatedStyle);
     }
 
     private static AppBarData CreateAppBarData(IntPtr hwnd)
