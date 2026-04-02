@@ -58,6 +58,7 @@ internal static class WindowCatalog
             {
                 Hwnd = hwnd,
                 Title = title,
+                ExecutablePath = TryGetExecutablePath(hwnd, out var executablePath) ? executablePath : string.Empty,
                 Icon = GetWindowIcon(hwnd),
                 IsActive = GetComparableWindow(hwnd) == foregroundWindow
             });

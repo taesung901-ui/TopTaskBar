@@ -43,6 +43,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly TimerToolController _timerToolController;
     private readonly AlarmToolController _alarmToolController;
     private readonly AlarmScheduler _alarmScheduler;
+    private readonly OutlookClassicUnreadMonitor _outlookUnreadMonitor;
     private AppBarHelper? _appBarHelper;
     private TimerCompletedWindow? _timerCompletedWindow;
     private AlarmCompletedWindow? _alarmCompletedWindow;
@@ -66,9 +67,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _timerToolController = new TimerToolController();
         _alarmToolController = new AlarmToolController();
         _alarmScheduler = new AlarmScheduler();
+        _outlookUnreadMonitor = new OutlookClassicUnreadMonitor();
         _timerToolController.Completed += OnTimerToolCompleted;
         _alarmToolController.Completed += OnAlarmToolCompleted;
         _alarmScheduler.AlarmTriggered += OnScheduledAlarmTriggered;
+        _outlookUnreadMonitor.StateChanged += OnOutlookUnreadStateChanged;
 
         InitializeComponent();
         DataContext = this;
@@ -232,6 +235,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         LoadLauncherApps();
         LoadAlarmEntries();
         RefreshAlarmSchedule();
+        _outlookUnreadMonitor.Start();
         UpdateCurrentDateTime();
         RefreshOpenWindows();
         _refreshTimer.Start();
@@ -275,6 +279,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             .Where(latestByHandle.ContainsKey)
             .Select(hwnd => latestByHandle[hwnd])
             .ToList();
+
+        var hasOutlookUnread = _outlookUnreadMonitor.HasUnreadMail;
+        foreach (var window in windows)
+        {
+            window.HasAttention = hasOutlookUnread && IsOutlookClassicWindow(window.ExecutablePath);
+        }
 
         OpenWindows.Clear();
         foreach (var window in windows)
@@ -741,14 +751,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             InteractionLogger.Log(
-                $"LauncherAppExecute name=\"{app.Name}\" type={targetType} path=\"{app.Path}\"");
+                $"LauncherAppExecuteBegin name=\"{app.Name}\" type={targetType} path=\"{app.Path}\" " +
+                $"args=\"{app.Arguments}\" workingDir=\"{app.WorkingDirectory}\" " +
+                $"startFile=\"{startInfo.FileName}\" startArgs=\"{startInfo.Arguments}\" " +
+                $"startWorkingDir=\"{startInfo.WorkingDirectory}\" useShellExecute={startInfo.UseShellExecute}");
 
-            _ = Process.Start(startInfo);
+            var process = Process.Start(startInfo);
+
+            InteractionLogger.Log(
+                $"LauncherAppExecuteResult name=\"{app.Name}\" type={targetType} path=\"{app.Path}\" " +
+                $"processNull={process is null} processId={(process?.Id.ToString() ?? "null")} " +
+                $"processName=\"{process?.ProcessName ?? string.Empty}\"");
+
             RegisterRecentLauncherApp(app);
             CloseLauncherPopup();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            InteractionLogger.Log(
+                $"LauncherAppExecuteFailed name=\"{app.Name}\" type={targetType} path=\"{app.Path}\" " +
+                $"args=\"{app.Arguments}\" workingDir=\"{app.WorkingDirectory}\" " +
+                $"exceptionType=\"{ex.GetType().FullName}\" message=\"{ex.Message}\"");
             ShowOwnedMessageBox(GetLaunchFailureMessage(targetType), "TopTaskBar", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -829,9 +852,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _timerToolController.Completed -= OnTimerToolCompleted;
         _alarmToolController.Completed -= OnAlarmToolCompleted;
         _alarmScheduler.AlarmTriggered -= OnScheduledAlarmTriggered;
+        _outlookUnreadMonitor.StateChanged -= OnOutlookUnreadStateChanged;
         _timerToolController.Dispose();
         _alarmToolController.Dispose();
         _alarmScheduler.Dispose();
+        _outlookUnreadMonitor.Dispose();
         _alarmEditWindow?.Close();
         _timerCompletedWindow?.Close();
         _alarmCompletedWindow?.Close();
@@ -1311,6 +1336,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private static bool IsMouseButtonDown(int virtualKey)
     {
         return (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
+    }
+
+    private static bool IsOutlookClassicWindow(string executablePath)
+    {
+        if (string.IsNullOrWhiteSpace(executablePath))
+        {
+            return false;
+        }
+
+        var fileName = Path.GetFileName(executablePath);
+        return string.Equals(fileName, "OUTLOOK.EXE", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void OnOutlookUnreadStateChanged(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(new Action(RefreshOpenWindows));
     }
 
     private static string GetLauncherDisplayName(string windowTitle, string executablePath)
