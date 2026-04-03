@@ -16,12 +16,18 @@ internal sealed class AppBarHelper : IDisposable
     private const int MaNoActivate = 3;
     private const int GwlExstyle = -20;
     private const int WsExNoActivate = 0x08000000;
+    private static readonly IntPtr HwndBottom = new(1);
+    private static readonly IntPtr HwndTopmost = new(-1);
+    private const uint SwpNosize = 0x0001;
+    private const uint SwpNomove = 0x0002;
+    private const uint SwpNoactivate = 0x0010;
     private static readonly IntPtr MonitorDefaultToNearest = new(2);
 
     private readonly Window _window;
     private HwndSource? _source;
     private bool _isRegistered;
     private bool _noActivateEnabled = true;
+    private bool _isFullscreenAppActive;
 
     public AppBarHelper(Window window)
     {
@@ -147,8 +153,23 @@ internal sealed class AppBarHelper : IDisposable
         {
             UpdateAppBarBounds(hwnd);
         }
+        else if (msg == CallbackMessageId && wParam.ToInt32() == (int)AppBarNotification.FullscreenApp)
+        {
+            var fullscreenActive = lParam != IntPtr.Zero;
+            if (_isFullscreenAppActive != fullscreenActive)
+            {
+                _isFullscreenAppActive = fullscreenActive;
+                ApplyAppBarZOrder(hwnd, fullscreenActive);
+            }
+        }
 
         return IntPtr.Zero;
+    }
+
+    private static void ApplyAppBarZOrder(IntPtr hwnd, bool fullscreenAppActive)
+    {
+        var zOrder = fullscreenAppActive ? HwndBottom : HwndTopmost;
+        SetWindowPos(hwnd, zOrder, 0, 0, 0, 0, SwpNomove | SwpNosize | SwpNoactivate);
     }
 
     private static void ApplyNoActivateStyle(IntPtr hwnd, bool enabled)
@@ -179,7 +200,8 @@ internal sealed class AppBarHelper : IDisposable
 
     private enum AppBarNotification
     {
-        PosChanged = 0x00000001
+        PosChanged = 0x00000001,
+        FullscreenApp = 0x00000002
     }
 
     private enum AppBarEdge : uint
@@ -233,4 +255,15 @@ internal sealed class AppBarHelper : IDisposable
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLong")]
     private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int x,
+        int y,
+        int cx,
+        int cy,
+        uint uFlags);
 }
