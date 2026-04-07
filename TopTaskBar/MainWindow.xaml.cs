@@ -1311,26 +1311,49 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private static bool IsScreenPointWithinElement(FrameworkElement? element, NativePoint screenPoint)
     {
-        if (element is null || !element.IsLoaded || element.ActualWidth <= 0 || element.ActualHeight <= 0)
+        if (element is null ||
+            !element.IsLoaded ||
+            element.ActualWidth <= 0 ||
+            element.ActualHeight <= 0 ||
+            PresentationSource.FromVisual(element) is null)
         {
             return false;
         }
 
-        var topLeft = element.PointToScreen(new Point(0, 0));
-        var bounds = new Rect(topLeft.X, topLeft.Y, element.ActualWidth, element.ActualHeight);
-        return bounds.Contains(new Point(screenPoint.X, screenPoint.Y));
+        try
+        {
+            var topLeft = element.PointToScreen(new Point(0, 0));
+            var bounds = new Rect(topLeft.X, topLeft.Y, element.ActualWidth, element.ActualHeight);
+            return bounds.Contains(new Point(screenPoint.X, screenPoint.Y));
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private static bool IsScreenPointWithinWindow(Window? window, NativePoint screenPoint)
     {
-        if (window is null || !window.IsLoaded || !window.IsVisible || window.ActualWidth <= 0 || window.ActualHeight <= 0)
+        if (window is null ||
+            !window.IsLoaded ||
+            !window.IsVisible ||
+            window.ActualWidth <= 0 ||
+            window.ActualHeight <= 0 ||
+            PresentationSource.FromVisual(window) is null)
         {
             return false;
         }
 
-        var topLeft = window.PointToScreen(new Point(0, 0));
-        var bounds = new Rect(topLeft.X, topLeft.Y, window.ActualWidth, window.ActualHeight);
-        return bounds.Contains(new Point(screenPoint.X, screenPoint.Y));
+        try
+        {
+            var topLeft = window.PointToScreen(new Point(0, 0));
+            var bounds = new Rect(topLeft.X, topLeft.Y, window.ActualWidth, window.ActualHeight);
+            return bounds.Contains(new Point(screenPoint.X, screenPoint.Y));
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private static bool IsMouseButtonDown(int virtualKey)
