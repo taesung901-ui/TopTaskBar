@@ -2,6 +2,8 @@ using System;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Threading;
+using Microsoft.Win32;
 using Point = System.Windows.Point;
 
 namespace TopTaskBar;
@@ -12,7 +14,12 @@ internal sealed class AppBarHelper : IDisposable
     private const int WmUser = 0x0400;
     private const int CallbackMessageId = WmUser + 1;
     private const int WmMouseActivate = 0x0021;
+    private const int WmSettingChange = 0x001A;
+    private const int WmDisplayChange = 0x007E;
+    private const int WmPowerBroadcast = 0x0218;
     private const int WmDpiChanged = 0x02E0;
+    private const int PbtApmResumeSuspend = 0x0007;
+    private const int PbtApmResumeAutomatic = 0x0012;
     private const int MaNoActivate = 3;
     private const int GwlExstyle = -20;
     private const int WsExNoActivate = 0x08000000;
@@ -24,14 +31,25 @@ internal sealed class AppBarHelper : IDisposable
     private static readonly IntPtr MonitorDefaultToNearest = new(2);
 
     private readonly Window _window;
+    private readonly DispatcherTimer _appBarRefreshTimer;
     private HwndSource? _source;
     private bool _isRegistered;
     private bool _noActivateEnabled = true;
     private bool _isFullscreenAppActive;
+    private bool _pendingReRegister;
+    private int _pendingRefreshPasses;
+    private string _pendingRefreshReason = string.Empty;
 
     public AppBarHelper(Window window)
     {
         _window = window;
+        _appBarRefreshTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(500)
+        };
+        _appBarRefreshTimer.Tick += OnAppBarRefreshTimerTick;
+        SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+        SystemEvents.PowerModeChanged += OnPowerModeChanged;
     }
 
     public void Attach(IntPtr hwnd)
@@ -45,11 +63,17 @@ internal sealed class AppBarHelper : IDisposable
         _source.AddHook(WndProc);
         ApplyNoActivateStyle(hwnd, enabled: true);
         RegisterAppBar(hwnd);
-        UpdateAppBarBounds(hwnd);
+        UpdateAppBarBounds(hwnd, "Attach", logMetrics: true);
+        ScheduleAppBarRefresh("AttachDelayed", reRegister: false);
     }
 
     public void Dispose()
     {
+        SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        _appBarRefreshTimer.Stop();
+        _appBarRefreshTimer.Tick -= OnAppBarRefreshTimerTick;
+
         if (_source is not null)
         {
             _source.RemoveHook(WndProc);
@@ -82,7 +106,19 @@ internal sealed class AppBarHelper : IDisposable
         _isRegistered = true;
     }
 
-    private void UpdateAppBarBounds(IntPtr hwnd)
+    private void ReRegisterAppBar(IntPtr hwnd)
+    {
+        if (_isRegistered)
+        {
+            var removeData = CreateAppBarData(hwnd);
+            SHAppBarMessage(AppBarMessage.Remove, ref removeData);
+            _isRegistered = false;
+        }
+
+        RegisterAppBar(hwnd);
+    }
+
+    private void UpdateAppBarBounds(IntPtr hwnd, string reason = "Update", bool logMetrics = false)
     {
         if (_source?.CompositionTarget is null)
         {
@@ -106,6 +142,7 @@ internal sealed class AppBarHelper : IDisposable
         var monitorLeftPx = monitorInfo.rcMonitor.left;
         var monitorTopPx = monitorInfo.rcMonitor.top;
         var monitorRightPx = monitorInfo.rcMonitor.right;
+        var monitorBottomPx = monitorInfo.rcMonitor.bottom;
         var barHeightPx = Math.Max(1, (int)Math.Round(BarHeightDip * transformToDevice.M22));
 
         var data = CreateAppBarData(hwnd);
@@ -131,6 +168,16 @@ internal sealed class AppBarHelper : IDisposable
         _window.Top = topLeftDip.Y;
         _window.Width = bottomRightDip.X - topLeftDip.X;
         _window.Height = bottomRightDip.Y - topLeftDip.Y;
+
+        if (logMetrics)
+        {
+            InteractionLogger.Log(
+                $"AppBarBounds reason=\"{reason}\" monitorPx=({monitorLeftPx},{monitorTopPx},{monitorRightPx},{monitorBottomPx}) " +
+                $"workPx=({monitorInfo.rcWork.left},{monitorInfo.rcWork.top},{monitorInfo.rcWork.right},{monitorInfo.rcWork.bottom}) " +
+                $"scale=({transformToDevice.M11:0.###},{transformToDevice.M22:0.###}) barHeightPx={barHeightPx} " +
+                $"reservedPx=({data.rc.left},{data.rc.top},{data.rc.right},{data.rc.bottom}) " +
+                $"windowDip=({_window.Left:0.##},{_window.Top:0.##},{_window.Width:0.##},{_window.Height:0.##})");
+        }
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -146,7 +193,24 @@ internal sealed class AppBarHelper : IDisposable
 
         if (msg == WmDpiChanged)
         {
-            UpdateAppBarBounds(hwnd);
+            UpdateAppBarBounds(hwnd, "WmDpiChanged", logMetrics: true);
+            ScheduleAppBarRefresh("WmDpiChangedDelayed", reRegister: false);
+        }
+
+        if (msg == WmDisplayChange)
+        {
+            ScheduleAppBarRefresh("WmDisplayChange", reRegister: true);
+        }
+
+        if (msg == WmSettingChange)
+        {
+            ScheduleAppBarRefresh("WmSettingChange", reRegister: true);
+        }
+
+        if (msg == WmPowerBroadcast &&
+            (wParam.ToInt32() == PbtApmResumeAutomatic || wParam.ToInt32() == PbtApmResumeSuspend))
+        {
+            ScheduleAppBarRefresh($"WmPowerBroadcast:{wParam.ToInt32()}", reRegister: true);
         }
 
         if (msg == CallbackMessageId && wParam.ToInt32() == (int)AppBarNotification.PosChanged)
@@ -164,6 +228,76 @@ internal sealed class AppBarHelper : IDisposable
         }
 
         return IntPtr.Zero;
+    }
+
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e)
+    {
+        ScheduleAppBarRefresh("SystemEvents.DisplaySettingsChanged", reRegister: true);
+    }
+
+    private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode == PowerModes.Resume)
+        {
+            ScheduleAppBarRefresh("SystemEvents.PowerModeChanged.Resume", reRegister: true);
+        }
+    }
+
+    private void ScheduleAppBarRefresh(string reason, bool reRegister)
+    {
+        if (!_window.Dispatcher.CheckAccess())
+        {
+            _window.Dispatcher.BeginInvoke(new Action(() => ScheduleAppBarRefresh(reason, reRegister)));
+            return;
+        }
+
+        if (_source is null)
+        {
+            return;
+        }
+
+        _pendingRefreshReason = reason;
+        _pendingReRegister |= reRegister;
+        _pendingRefreshPasses = Math.Max(_pendingRefreshPasses, 2);
+
+        InteractionLogger.Log(
+            $"AppBarRefreshScheduled reason=\"{reason}\" reRegister={reRegister} passes={_pendingRefreshPasses}");
+
+        _appBarRefreshTimer.Stop();
+        _appBarRefreshTimer.Start();
+    }
+
+    private void OnAppBarRefreshTimerTick(object? sender, EventArgs e)
+    {
+        if (_source is null)
+        {
+            _appBarRefreshTimer.Stop();
+            return;
+        }
+
+        var hwnd = _source.Handle;
+        var shouldReRegister = _pendingReRegister;
+        _pendingReRegister = false;
+
+        if (shouldReRegister)
+        {
+            ReRegisterAppBar(hwnd);
+        }
+
+        UpdateAppBarBounds(
+            hwnd,
+            $"{_pendingRefreshReason}:DelayedPass{Math.Max(1, 3 - _pendingRefreshPasses)}",
+            logMetrics: true);
+
+        _pendingRefreshPasses--;
+        if (_pendingRefreshPasses <= 0)
+        {
+            _appBarRefreshTimer.Stop();
+            _pendingRefreshReason = string.Empty;
+            return;
+        }
+
+        _appBarRefreshTimer.Start();
     }
 
     private static void ApplyAppBarZOrder(IntPtr hwnd, bool fullscreenAppActive)

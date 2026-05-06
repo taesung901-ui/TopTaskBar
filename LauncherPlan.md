@@ -1,4 +1,4 @@
-# TopTaskBar 런처 구현 계획
+﻿# TopTaskBar 런처 구현 계획
 
 ## 1. 목표
 

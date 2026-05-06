@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Linq;
@@ -8,7 +8,7 @@ namespace TopTaskBar;
 public sealed class AlarmEntry : INotifyPropertyChanged
 {
     private string _id = Guid.NewGuid().ToString("N");
-    private string _label = "Alarm";
+    private string _label = "알람";
     private int _hour24;
     private int _minute;
     private bool _enabled;

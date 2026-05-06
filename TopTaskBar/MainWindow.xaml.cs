@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -1528,6 +1528,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return false;
         }
 
+        var originalExecutablePath = executablePath;
+        executablePath = NormalizeLauncherTargetPath(executablePath);
+        if (!string.Equals(originalExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
+        {
+            InteractionLogger.Log(
+                $"TryAddPinnedAppNormalize originalPath=\"{originalExecutablePath}\" normalizedPath=\"{executablePath}\"");
+        }
+
         var targetType = GetLauncherTargetType(executablePath);
         if (targetType == LauncherTargetType.Unknown)
         {
@@ -1588,6 +1596,35 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         message = $"'{appName}' 앱을 런처에 추가했습니다.";
         InteractionLogger.Log($"TryAddPinnedAppSuccess appName=\"{appName}\" path=\"{executablePath}\"");
         return true;
+    }
+
+    private static string NormalizeLauncherTargetPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return path;
+        }
+
+        if (!string.Equals(Path.GetFileName(path), "whale.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return path;
+        }
+
+        var versionDirectory = Path.GetDirectoryName(path);
+        var applicationDirectory = string.IsNullOrWhiteSpace(versionDirectory)
+            ? null
+            : Path.GetDirectoryName(versionDirectory);
+
+        if (string.IsNullOrWhiteSpace(applicationDirectory) ||
+            !applicationDirectory.Contains(
+                Path.Combine("Naver", "Naver Whale", "Application"),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return path;
+        }
+
+        var stableWhalePath = Path.Combine(applicationDirectory, "whale.exe");
+        return File.Exists(stableWhalePath) ? stableWhalePath : path;
     }
 
     private enum LauncherTargetType

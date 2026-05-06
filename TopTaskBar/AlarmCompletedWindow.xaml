@@ -1,7 +1,7 @@
-<Window x:Class="TopTaskBar.AlarmCompletedWindow"
+﻿<Window x:Class="TopTaskBar.AlarmCompletedWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Alarm"
+        Title="알람"
         Width="320"
         Height="180"
         WindowStyle="None"
@@ -18,7 +18,7 @@
             BorderThickness="1"
             SnapsToDevicePixels="True">
         <StackPanel>
-            <TextBlock Text="Alarm"
+            <TextBlock Text="알람"
                        FontSize="16"
                        FontWeight="SemiBold"
                        Foreground="#1E2A33" />

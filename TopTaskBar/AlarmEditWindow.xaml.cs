@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -50,7 +50,7 @@ public partial class AlarmEditWindow : Window
         var meridiem = (MeridiemComboBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "오전";
         var label = (AlarmLabelTextBox.Text ?? string.Empty).Trim();
 
-        _editingAlarm.Label = string.IsNullOrWhiteSpace(label) ? "Alarm" : label;
+        _editingAlarm.Label = string.IsNullOrWhiteSpace(label) ? "알람" : label;
         _editingAlarm.Hour24 = ConvertTo24Hour(hour12, meridiem == "오후");
         _editingAlarm.Minute = minute;
         _editingAlarm.DaysOfWeekMask = BuildDaysMask();

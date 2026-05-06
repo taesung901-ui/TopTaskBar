@@ -1,4 +1,4 @@
-<Window x:Class="TopTaskBar.MainWindow"
+﻿<Window x:Class="TopTaskBar.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -74,14 +74,14 @@
         </ContextMenu>
 
         <ContextMenu x:Key="SettingsMenu">
-            <MenuItem Header="Window Slot Width" IsEnabled="False" />
-            <MenuItem Header="Narrower" Click="OnDecreaseWidthClick" />
-            <MenuItem Header="Wider" Click="OnIncreaseWidthClick" />
-            <MenuItem Header="Reset Width" Click="OnResetWidthClick" />
+            <MenuItem Header="창 버튼 폭" IsEnabled="False" />
+            <MenuItem Header="좁게" Click="OnDecreaseWidthClick" />
+            <MenuItem Header="넓게" Click="OnIncreaseWidthClick" />
+            <MenuItem Header="기본 폭으로" Click="OnResetWidthClick" />
             <Separator />
-            <MenuItem Header="Refresh Window List" Click="OnRefreshWindowsClick" />
+            <MenuItem Header="창 목록 새로고침" Click="OnRefreshWindowsClick" />
             <Separator />
-            <MenuItem Header="Exit TopTaskBar" Click="OnCloseButtonClick" />
+            <MenuItem Header="TopTaskBar 종료" Click="OnCloseButtonClick" />
         </ContextMenu>
     </Window.Resources>
 
@@ -430,7 +430,7 @@
                                         BorderThickness="1"
                                         SnapsToDevicePixels="True">
                                     <StackPanel>
-                                        <TextBlock Text="Launcher"
+                                        <TextBlock Text="런처"
                                                    FontSize="15"
                                                    FontWeight="Medium"
                                                    Foreground="{Binding PrimaryForegroundBrush}" />
@@ -459,7 +459,7 @@
                                                 </Style>
                                             </StackPanel.Style>
 
-                                            <TextBlock Text="Recent"
+                                            <TextBlock Text="최근 실행"
                                                        Margin="2,0,0,6"
                                                        FontSize="11"
                                                        Foreground="{Binding MutedForegroundBrush}" />
@@ -844,7 +844,7 @@
                                                             </Style>
                                                         </StackPanel.Style>
 
-                                                    <TextBlock Text="Timer"
+                                                    <TextBlock Text="타이머"
                                                                FontSize="15"
                                                                FontWeight="Medium"
                                                                Foreground="{Binding PrimaryForegroundBrush}" />
@@ -1132,7 +1132,7 @@
                         BorderBrush="{Binding ChipBorderBrush}"
                         BorderThickness="1"
                         Cursor="Hand"
-                        ToolTip="Right-click for settings"
+                        ToolTip="설정 메뉴"
                         ContextMenu="{StaticResource SettingsMenu}">
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
@@ -1167,7 +1167,7 @@
                         BorderBrush="{Binding ChipBorderBrush}"
                         BorderThickness="1"
                         Cursor="Hand"
-                        ToolTip="Close TopTaskBar">
+                        ToolTip="TopTaskBar 종료">
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
                             <Border x:Name="Root"

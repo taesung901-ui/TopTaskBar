@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Text.Json;
 
@@ -105,7 +105,7 @@ internal static class SettingsStore
             },
             new LauncherAppSetting
             {
-                Name = "Command Prompt",
+                Name = "명령 프롬프트",
                 Path = Path.Combine(systemDirectory, "cmd.exe"),
                 WorkingDirectory = systemDirectory
             },
