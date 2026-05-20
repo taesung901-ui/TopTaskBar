@@ -62,8 +62,10 @@ dotnet run --project .\TopTaskBar\TopTaskBar.csproj -c Release
 
 ### Publish
 
+배포용 파일 생성:
+
 ```powershell
-dotnet publish .\TopTaskBar\TopTaskBar.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\TopTaskBar\bin\Release\manual-publish\win-x64
+dotnet publish .\TopTaskBar\TopTaskBar.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishReadyToRun=false -o .\TopTaskBar\bin\Release\manual-publish\win-x64
 ```
 
 출력 폴더:
@@ -75,6 +77,36 @@ TopTaskBar\bin\Release\manual-publish\win-x64
 참고:
 - GitHub Release에는 이 폴더 내용을 zip으로 묶어서 올립니다.
 - `TopTaskBar.pdb` 는 배포 zip에서 제외해도 됩니다.
+
+### 설치 프로그램 생성
+
+설치 프로그램은 [Inno Setup 6](https://jrsoftware.org/isinfo.php)로 생성합니다. 먼저 위의 `dotnet publish` 명령을 실행한 뒤, 저장소 루트에서 아래 명령을 실행합니다.
+
+Inno Setup이 PATH에 등록되어 있는 경우:
+
+```powershell
+ISCC.exe .\InnoSetupScript.iss
+```
+
+PATH에 등록되어 있지 않은 경우:
+
+```powershell
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" .\InnoSetupScript.iss
+```
+
+설치 파일 출력 위치:
+
+```text
+Output\TopTaskBar_Setup.exe
+```
+
+릴리스 준비 순서:
+
+```powershell
+dotnet build .\TopTaskBar.sln -c Release
+dotnet publish .\TopTaskBar\TopTaskBar.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishReadyToRun=false -o .\TopTaskBar\bin\Release\manual-publish\win-x64
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" .\InnoSetupScript.iss
+```
 
 ## 실행 확인 포인트
 

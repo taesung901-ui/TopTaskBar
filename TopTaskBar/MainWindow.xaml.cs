@@ -250,6 +250,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void OnActivated(object? sender, EventArgs e)
     {
         ApplyTheme();
+        _appBarHelper?.ScheduleRefresh("MainWindow.Activated", passes: 4);
         RefreshOpenWindows();
     }
 
@@ -370,6 +371,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void OnLauncherButtonPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         CloseCalendarPopup();
+        CloseTimerToolPopup();
 
         if (LauncherPopup.IsOpen)
         {
@@ -413,12 +415,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void OnLauncherPopupOpened(object sender, EventArgs e)
     {
+        CloseTimerToolPopup();
         UpdateInteractivePopupMode();
         _wasLeftButtonDown = IsMouseButtonDown(VkLbutton);
         _wasRightButtonDown = IsMouseButtonDown(VkRbutton);
         _popupDismissTimer.Start();
         Dispatcher.BeginInvoke(new Action(() =>
         {
+            CloseTimerToolPopup();
             Activate();
             LauncherSearchBox.Focus();
             Keyboard.Focus(LauncherSearchBox);
