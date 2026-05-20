@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
@@ -10,6 +11,9 @@ namespace TopTaskBar;
 /// </summary>
 public partial class App : Application
 {
+    private const string SingleInstanceMutexName = @"Local\TopTaskBar_47FD43FA_1BB8_4D54_B8BC_1457379E90C2";
+    private Mutex? _singleInstanceMutex;
+
     public App()
     {
         DispatcherUnhandledException += OnDispatcherUnhandledException;
@@ -20,6 +24,16 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         InteractionLogger.Log("AppStartup");
+        _singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var isFirstInstance);
+        if (!isFirstInstance)
+        {
+            InteractionLogger.Log("DuplicateInstanceDetected shutdown=true");
+            _singleInstanceMutex.Dispose();
+            _singleInstanceMutex = null;
+            Shutdown(0);
+            return;
+        }
+
         base.OnStartup(e);
     }
 
@@ -30,6 +44,9 @@ public partial class App : Application
         DispatcherUnhandledException -= OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException -= OnCurrentDomainUnhandledException;
         TaskScheduler.UnobservedTaskException -= OnUnobservedTaskException;
+        _singleInstanceMutex?.ReleaseMutex();
+        _singleInstanceMutex?.Dispose();
+        _singleInstanceMutex = null;
 
         base.OnExit(e);
     }
@@ -70,4 +87,3 @@ public partial class App : Application
         }
     }
 }
-

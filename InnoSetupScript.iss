@@ -8,6 +8,7 @@
 #define MyAppURL "https://github.com/"
 #define MyAppExeName "TopTaskBar.exe"
 #define MyAppPublishDir "C:\VS2\CSHARP\TopTaskBar\TopTaskBar\bin\Release\manual-publish\win-x64"
+#define MyAppIconFile "C:\VS2\CSHARP\TopTaskBar\TopTaskBar\TopTaskBar.ico"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
@@ -19,6 +20,7 @@ AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 UninstallDisplayIcon={app}\{#MyAppExeName}
+SetupIconFile={#MyAppIconFile}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
