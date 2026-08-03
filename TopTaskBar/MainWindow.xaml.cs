@@ -40,8 +40,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private TopTaskBarSettings _settings;
     private readonly List<IntPtr> _windowOrder = [];
     private readonly List<LauncherAppItem> _allLauncherApps = [];
+    private readonly Queue<string> _pendingAlarmNotifications = [];
     private readonly TimerToolController _timerToolController;
-    private readonly AlarmToolController _alarmToolController;
     private readonly AlarmScheduler _alarmScheduler;
     private readonly OutlookClassicUnreadMonitor _outlookUnreadMonitor;
     private AppBarHelper? _appBarHelper;
@@ -52,7 +52,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private string _currentDateTimeText = DateTime.Now.ToString("MM-dd HH:mm");
     private string _searchText = string.Empty;
     private WindowsThemePalette _themePalette = WindowsThemeHelper.GetPalette();
-    private string _windowCountLabel = "0 apps";
     private double _windowSlotWidth = DefaultWindowSlotWidth;
     private bool _wasLeftButtonDown;
     private bool _wasRightButtonDown;
@@ -65,11 +64,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _settings = SettingsStore.Load();
         _windowSlotWidth = ClampWindowSlotWidth(_settings.WindowSlotWidth);
         _timerToolController = new TimerToolController();
-        _alarmToolController = new AlarmToolController();
         _alarmScheduler = new AlarmScheduler();
         _outlookUnreadMonitor = new OutlookClassicUnreadMonitor();
         _timerToolController.Completed += OnTimerToolCompleted;
-        _alarmToolController.Completed += OnAlarmToolCompleted;
         _alarmScheduler.AlarmTriggered += OnScheduledAlarmTriggered;
         _outlookUnreadMonitor.StateChanged += OnOutlookUnreadStateChanged;
 
@@ -125,8 +122,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     public TimerToolState TimerTool => _timerToolController.State;
 
-    public AlarmToolState AlarmTool => _alarmToolController.State;
-
     public bool HasLauncherSearchResults => LauncherApps.Count > 0;
 
     public bool IsLauncherSearchActive => !string.IsNullOrWhiteSpace(SearchText);
@@ -155,21 +150,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    public string WindowCountLabel
-    {
-        get => _windowCountLabel;
-        private set
-        {
-            if (_windowCountLabel == value)
-            {
-                return;
-            }
-
-            _windowCountLabel = value;
-            OnPropertyChanged();
-        }
-    }
-
     public double WindowSlotWidth
     {
         get => _windowSlotWidth;
@@ -184,11 +164,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _settings.WindowSlotWidth = value;
             SettingsStore.Save(_settings);
             OnPropertyChanged();
-            OnPropertyChanged(nameof(WindowSlotWidthLabel));
         }
     }
-
-    public string WindowSlotWidthLabel => $"{WindowSlotWidth:0}px";
 
     public string CurrentDateTimeText
     {
@@ -293,7 +270,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             OpenWindows.Add(window);
         }
 
-        WindowCountLabel = $"{OpenWindows.Count} apps";
     }
 
     private void OnWindowButtonClick(object sender, RoutedEventArgs e)
@@ -531,16 +507,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }));
     }
 
-    private void OnAlarmToolCompleted(object? sender, EventArgs e)
-    {
-        Dispatcher.BeginInvoke(new Action(() =>
-        {
-            SelectToolTab(ToolTab.Alarm);
-            TimerToolPopup.IsOpen = true;
-            ShowAlarmCompletedWindow();
-        }));
-    }
-
     private void OnScheduledAlarmTriggered(object? sender, AlarmTriggeredEventArgs e)
     {
         Dispatcher.BeginInvoke(new Action(() =>
@@ -554,7 +520,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             SelectToolTab(ToolTab.Alarm);
             TimerToolPopup.IsOpen = true;
-            ShowAlarmCompletedWindow(e.Alarm.Label);
+            QueueAlarmCompletedWindow(e.Alarm.Label);
             RefreshAlarmSchedule();
         }));
     }
@@ -695,7 +661,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InteractionLogger.Log(
             $"AddRunningAppToLauncherPathResolved title=\"{windowInfo.Title}\" hwnd=0x{windowInfo.Hwnd.ToInt64():X} path=\"{executablePath}\"");
 
-        var appName = GetLauncherDisplayName(windowInfo.Title, executablePath);
+        var appName = LauncherTargetHelper.GetDisplayName(windowInfo.Title, executablePath);
         if (!TryAddPinnedApp(appName, executablePath, out var message))
         {
             InteractionLogger.Log(
@@ -723,8 +689,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        var targetType = GetLauncherTargetType(app.Path);
-        if (!TryValidateLauncherTarget(app.Path, targetType, out var validationMessage))
+        var targetType = LauncherTargetHelper.GetTargetType(app.Path);
+        if (!LauncherTargetHelper.TryValidate(app.Path, targetType, out var validationMessage))
         {
             InteractionLogger.Log(
                 $"LauncherAppExecuteRejected name=\"{app.Name}\" type={targetType} path=\"{app.Path}\" message=\"{validationMessage}\"");
@@ -776,7 +742,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 $"LauncherAppExecuteFailed name=\"{app.Name}\" type={targetType} path=\"{app.Path}\" " +
                 $"args=\"{app.Arguments}\" workingDir=\"{app.WorkingDirectory}\" " +
                 $"exceptionType=\"{ex.GetType().FullName}\" message=\"{ex.Message}\"");
-            ShowOwnedMessageBox(GetLaunchFailureMessage(targetType), "TopTaskBar", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowOwnedMessageBox(LauncherTargetHelper.GetLaunchFailureMessage(targetType), "TopTaskBar", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -854,15 +820,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _settingsWatcher.Dispose();
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         _timerToolController.Completed -= OnTimerToolCompleted;
-        _alarmToolController.Completed -= OnAlarmToolCompleted;
         _alarmScheduler.AlarmTriggered -= OnScheduledAlarmTriggered;
         _outlookUnreadMonitor.StateChanged -= OnOutlookUnreadStateChanged;
         _timerToolController.Dispose();
-        _alarmToolController.Dispose();
         _alarmScheduler.Dispose();
         _outlookUnreadMonitor.Dispose();
         _alarmEditWindow?.Close();
         _timerCompletedWindow?.Close();
+        _pendingAlarmNotifications.Clear();
         _alarmCompletedWindow?.Close();
         _appBarHelper?.Dispose();
         _appBarHelper = null;
@@ -895,7 +860,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         foreach (var app in _settings.PinnedApps)
         {
-            var targetType = GetLauncherTargetType(app.Path);
+            var targetType = LauncherTargetHelper.GetTargetType(app.Path);
             _allLauncherApps.Add(new LauncherAppItem
             {
                 Name = app.Name,
@@ -903,7 +868,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 Arguments = app.Arguments,
                 WorkingDirectory = app.WorkingDirectory,
                 Icon = AppIconHelper.LoadIcon(app.Path),
-                FallbackGlyph = GetLauncherFallbackGlyph(targetType)
+                FallbackGlyph = LauncherTargetHelper.GetFallbackGlyph(targetType)
             });
         }
 
@@ -1057,7 +1022,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         CalendarDays.Clear();
 
         var firstOfMonth = new DateTime(_displayedMonth.Year, _displayedMonth.Month, 1);
-        var daysInMonth = DateTime.DaysInMonth(_displayedMonth.Year, _displayedMonth.Month);
         var leadingDays = (int)firstOfMonth.DayOfWeek;
         var startDate = firstOfMonth.AddDays(-leadingDays);
 
@@ -1125,7 +1089,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ReloadSettingsFromDisk()
     {
-        var reloadedSettings = SettingsStore.Load();
+        if (!SettingsStore.TryLoad(out var reloadedSettings))
+        {
+            InteractionLogger.Log("SettingsReloadSkipped reason=invalid_or_unreadable");
+            return;
+        }
+
         _settings = reloadedSettings;
 
         var reloadedWindowSlotWidth = ClampWindowSlotWidth(_settings.WindowSlotWidth);
@@ -1133,7 +1102,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             _windowSlotWidth = reloadedWindowSlotWidth;
             OnPropertyChanged(nameof(WindowSlotWidth));
-            OnPropertyChanged(nameof(WindowSlotWidthLabel));
         }
 
         LoadLauncherApps();
@@ -1217,25 +1185,26 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _timerCompletedWindow = null;
     }
 
-    private void ShowAlarmCompletedWindow(string alarmLabel = "알람")
+    private void QueueAlarmCompletedWindow(string alarmLabel)
     {
+        _pendingAlarmNotifications.Enqueue(alarmLabel);
         if (_alarmCompletedWindow is null || !_alarmCompletedWindow.IsLoaded)
         {
-            _alarmCompletedWindow = new AlarmCompletedWindow();
-            _alarmCompletedWindow.Closed += OnAlarmCompletedWindowClosed;
-            _alarmCompletedWindow.SetAlarmLabel(alarmLabel);
-            _alarmCompletedWindow.Show();
+            ShowNextAlarmCompletedWindow();
+        }
+    }
+
+    private void ShowNextAlarmCompletedWindow()
+    {
+        if (_pendingAlarmNotifications.Count == 0)
+        {
             return;
         }
 
-        _alarmCompletedWindow.SetAlarmLabel(alarmLabel);
-
-        if (!_alarmCompletedWindow.IsVisible)
-        {
-            _alarmCompletedWindow.Show();
-        }
-
-        _alarmCompletedWindow.Activate();
+        _alarmCompletedWindow = new AlarmCompletedWindow();
+        _alarmCompletedWindow.Closed += OnAlarmCompletedWindowClosed;
+        _alarmCompletedWindow.SetAlarmLabel(_pendingAlarmNotifications.Dequeue());
+        _alarmCompletedWindow.Show();
     }
 
     private void OnAlarmCompletedWindowClosed(object? sender, EventArgs e)
@@ -1246,6 +1215,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         _alarmCompletedWindow = null;
+        Dispatcher.BeginInvoke(new Action(ShowNextAlarmCompletedWindow));
     }
 
     private void OnAlarmEditWindowClosed(object? sender, EventArgs e)
@@ -1381,139 +1351,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Dispatcher.BeginInvoke(new Action(RefreshOpenWindows));
     }
 
-    private static string GetLauncherDisplayName(string windowTitle, string executablePath)
-    {
-        if (!string.IsNullOrWhiteSpace(windowTitle))
-        {
-            var separators = new[] { " - ", " — ", " | " };
-            foreach (var separator in separators)
-            {
-                var separatorIndex = windowTitle.LastIndexOf(separator, StringComparison.CurrentCulture);
-                if (separatorIndex > 0)
-                {
-                    var candidate = windowTitle[(separatorIndex + separator.Length)..].Trim();
-                    if (!string.IsNullOrWhiteSpace(candidate))
-                    {
-                        return candidate;
-                    }
-                }
-            }
-        }
-
-        return Path.GetFileNameWithoutExtension(executablePath);
-    }
-
-    private static LauncherTargetType GetLauncherTargetType(string path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return LauncherTargetType.Unknown;
-        }
-
-        if (Uri.TryCreate(path, UriKind.Absolute, out var uri) &&
-            (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
-        {
-            return LauncherTargetType.Url;
-        }
-
-        if (Directory.Exists(path))
-        {
-            return LauncherTargetType.Directory;
-        }
-
-        var extension = Path.GetExtension(path);
-        if (string.Equals(extension, ".exe", StringComparison.OrdinalIgnoreCase))
-        {
-            return LauncherTargetType.Executable;
-        }
-
-        if (string.Equals(extension, ".lnk", StringComparison.OrdinalIgnoreCase))
-        {
-            return LauncherTargetType.Shortcut;
-        }
-
-        return LauncherTargetType.Unknown;
-    }
-
-    private static string GetLauncherFallbackGlyph(LauncherTargetType targetType)
-    {
-        return targetType switch
-        {
-            LauncherTargetType.Directory => "F",
-            LauncherTargetType.Url => "W",
-            LauncherTargetType.Shortcut => "L",
-            _ => "A"
-        };
-    }
-
-    private static string GetDefaultLauncherName(string path, LauncherTargetType targetType)
-    {
-        return targetType switch
-        {
-            LauncherTargetType.Directory => new DirectoryInfo(path).Name,
-            LauncherTargetType.Url when Uri.TryCreate(path, UriKind.Absolute, out var uri) => uri.Host,
-            _ => Path.GetFileNameWithoutExtension(path)
-        };
-    }
-
-    private static bool TryValidateLauncherTarget(string path, LauncherTargetType targetType, out string message)
-    {
-        message = string.Empty;
-
-        switch (targetType)
-        {
-            case LauncherTargetType.Executable:
-                if (!File.Exists(path))
-                {
-                    message = "실행 파일을 찾을 수 없습니다.";
-                    return false;
-                }
-                break;
-
-            case LauncherTargetType.Shortcut:
-                if (!File.Exists(path))
-                {
-                    message = "바로가기 파일을 찾을 수 없습니다.";
-                    return false;
-                }
-                break;
-
-            case LauncherTargetType.Directory:
-                if (!Directory.Exists(path))
-                {
-                    message = "폴더를 찾을 수 없습니다.";
-                    return false;
-                }
-                break;
-
-            case LauncherTargetType.Url:
-                if (!Uri.TryCreate(path, UriKind.Absolute, out var uri) ||
-                    (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-                {
-                    message = "http 또는 https 형식의 올바른 URL이 아닙니다.";
-                    return false;
-                }
-                break;
-
-            default:
-                message = "지원하지 않는 런처 항목입니다.";
-                return false;
-        }
-
-        return true;
-    }
-
-    private static string GetLaunchFailureMessage(LauncherTargetType targetType)
-    {
-        return targetType switch
-        {
-            LauncherTargetType.Directory => "폴더를 열지 못했습니다.",
-            LauncherTargetType.Url => "URL을 열지 못했습니다.",
-            LauncherTargetType.Shortcut => "바로가기를 실행하지 못했습니다.",
-            _ => "앱 실행에 실패했습니다."
-        };
-    }
-
     private MessageBoxResult ShowOwnedMessageBox(string messageBoxText, string caption, MessageBoxButton button, MessageBoxImage icon)
     {
         return MessageBox.Show(this, messageBoxText, caption, button, icon);
@@ -1533,14 +1370,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         var originalExecutablePath = executablePath;
-        executablePath = NormalizeLauncherTargetPath(executablePath);
+        executablePath = LauncherTargetHelper.NormalizePath(executablePath);
         if (!string.Equals(originalExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
         {
             InteractionLogger.Log(
                 $"TryAddPinnedAppNormalize originalPath=\"{originalExecutablePath}\" normalizedPath=\"{executablePath}\"");
         }
 
-        var targetType = GetLauncherTargetType(executablePath);
+        var targetType = LauncherTargetHelper.GetTargetType(executablePath);
         if (targetType == LauncherTargetType.Unknown)
         {
             message = "현재는 .exe, .lnk, 폴더, http/https URL만 런처에 추가할 수 있습니다.";
@@ -1572,7 +1409,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         var appName = string.IsNullOrWhiteSpace(appNameCandidate)
-            ? GetDefaultLauncherName(executablePath, targetType)
+            ? LauncherTargetHelper.GetDefaultName(executablePath, targetType)
             : appNameCandidate.Trim();
         var workingDirectory = targetType switch
         {
@@ -1600,44 +1437,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         message = $"'{appName}' 앱을 런처에 추가했습니다.";
         InteractionLogger.Log($"TryAddPinnedAppSuccess appName=\"{appName}\" path=\"{executablePath}\"");
         return true;
-    }
-
-    private static string NormalizeLauncherTargetPath(string path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return path;
-        }
-
-        if (!string.Equals(Path.GetFileName(path), "whale.exe", StringComparison.OrdinalIgnoreCase))
-        {
-            return path;
-        }
-
-        var versionDirectory = Path.GetDirectoryName(path);
-        var applicationDirectory = string.IsNullOrWhiteSpace(versionDirectory)
-            ? null
-            : Path.GetDirectoryName(versionDirectory);
-
-        if (string.IsNullOrWhiteSpace(applicationDirectory) ||
-            !applicationDirectory.Contains(
-                Path.Combine("Naver", "Naver Whale", "Application"),
-                StringComparison.OrdinalIgnoreCase))
-        {
-            return path;
-        }
-
-        var stableWhalePath = Path.Combine(applicationDirectory, "whale.exe");
-        return File.Exists(stableWhalePath) ? stableWhalePath : path;
-    }
-
-    private enum LauncherTargetType
-    {
-        Unknown,
-        Executable,
-        Shortcut,
-        Directory,
-        Url
     }
 
     private const int VkLbutton = 0x01;

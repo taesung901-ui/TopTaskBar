@@ -5,11 +5,11 @@ using System.Windows.Threading;
 
 namespace TopTaskBar;
 
-public sealed class AlarmScheduler
+public sealed class AlarmScheduler : IDisposable
 {
     private readonly DispatcherTimer _timer;
     private List<AlarmEntry> _alarms = [];
-    private (AlarmEntry Alarm, DateTime ScheduledAt)? _nextAlarm;
+    private List<(AlarmEntry Alarm, DateTime ScheduledAt)> _nextAlarms = [];
 
     public AlarmScheduler()
     {
@@ -30,9 +30,9 @@ public sealed class AlarmScheduler
 
     public void RefreshSchedule()
     {
-        _nextAlarm = GetNextOccurrence(_alarms, DateTime.Now);
+        _nextAlarms = GetNextOccurrences(_alarms, DateTime.Now).ToList();
 
-        if (_nextAlarm is null)
+        if (_nextAlarms.Count == 0)
         {
             _timer.Stop();
             return;
@@ -64,32 +64,54 @@ public sealed class AlarmScheduler
 
     public (AlarmEntry Alarm, DateTime ScheduledAt)? GetNextOccurrence(IEnumerable<AlarmEntry> alarms, DateTime referenceTime)
     {
-        return alarms
+        var nextOccurrences = GetNextOccurrences(alarms, referenceTime);
+        return nextOccurrences.Count == 0 ? null : nextOccurrences[0];
+    }
+
+    public IReadOnlyList<(AlarmEntry Alarm, DateTime ScheduledAt)> GetNextOccurrences(
+        IEnumerable<AlarmEntry> alarms,
+        DateTime referenceTime)
+    {
+        var scheduledAlarms = alarms
             .Where(alarm => alarm.Enabled)
             .Select(alarm => new { Alarm = alarm, ScheduledAt = GetNextOccurrence(alarm, referenceTime) })
             .Where(item => item.ScheduledAt is not null)
             .OrderBy(item => item.ScheduledAt)
-            .Select(item => (item.Alarm, item.ScheduledAt!.Value))
-            .Cast<(AlarmEntry Alarm, DateTime ScheduledAt)?>()
-            .FirstOrDefault();
+            .Select(item => (Alarm: item.Alarm, ScheduledAt: item.ScheduledAt!.Value))
+            .ToList();
+
+        if (scheduledAlarms.Count == 0)
+        {
+            return [];
+        }
+
+        var earliestTime = scheduledAlarms[0].ScheduledAt;
+        return scheduledAlarms
+            .TakeWhile(item => item.ScheduledAt == earliestTime)
+            .ToList();
     }
 
     private void OnTimerTick(object? sender, EventArgs e)
     {
-        if (_nextAlarm is null)
+        if (_nextAlarms.Count == 0)
         {
             _timer.Stop();
             return;
         }
 
-        if (DateTime.Now < _nextAlarm.Value.ScheduledAt)
+        if (DateTime.Now < _nextAlarms[0].ScheduledAt)
         {
             return;
         }
 
-        var triggered = _nextAlarm.Value;
-        _nextAlarm = null;
-        AlarmTriggered?.Invoke(this, new AlarmTriggeredEventArgs(triggered.Alarm, triggered.ScheduledAt));
+        var triggeredAlarms = _nextAlarms;
+        _nextAlarms = [];
+        _timer.Stop();
+
+        foreach (var triggered in triggeredAlarms)
+        {
+            AlarmTriggered?.Invoke(this, new AlarmTriggeredEventArgs(triggered.Alarm, triggered.ScheduledAt));
+        }
     }
 
     private static DateTime GetNextOneTimeOccurrence(AlarmEntry alarm, DateTime referenceTime)
@@ -112,7 +134,7 @@ public sealed class AlarmScheduler
 
     private static DateTime? GetNextRecurringOccurrence(AlarmEntry alarm, DateTime referenceTime)
     {
-        var days = Enumerable.Range(0, 7)
+        var days = Enumerable.Range(0, 8)
             .Select(offset =>
             {
                 var date = referenceTime.Date.AddDays(offset);

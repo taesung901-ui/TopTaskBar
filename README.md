@@ -1,153 +1,83 @@
-﻿# TopTaskBar
+# TopTaskBar
 
-Windows 화면 상단에 고정되는 WPF 기반 커스텀 작업 전환 바입니다.  
-기본 Windows 작업표시줄을 대체하는 수준까지는 아니지만, 상단 AppBar 영역을 예약하고 실행 중인 앱을 빠르게 전환할 수 있는 실험용 프로젝트로 만들고 있습니다.
+TopTaskBar는 Windows 화면 상단에 고정되는 .NET 8 WPF 작업 전환 바입니다. 화면 상단에 50 DIP의 AppBar 영역을 예약하고, 실행 중인 창 전환과 자주 쓰는 항목 실행, 달력, 타이머 및 알람을 한곳에서 제공합니다.
+
+현재 릴리스 버전은 `1.0.5`입니다.
 
 ## Download
-** 실행 파일입니다. 바로 다운로드해서 사용하실 수 있습니다. **
 
-[Latest Release](../../releases)
+[Latest Release](../../releases)에서 설치 프로그램 또는 압축 배포본을 받을 수 있습니다.
 
-## 현재 구현된 기능
+## 주요 기능
 
-- 화면 상단 `50px` AppBar 영역 예약
-- 종료 시 AppBar 예약 해제
-- 상단 고정 바 UI
-- 실행 중인 앱 창 목록 표시
-- 앱 아이콘 클릭 시 창 활성화
-- 활성 창 버튼 클릭 시 최소화 시도
-- 앱 버튼 순서 유지
-- Windows 테마 색상 반영
-- 앱 버튼 오른쪽에 날짜/시간 버튼 표시
-- 우클릭 메뉴 및 일부 설정 저장
+- 화면 상단 50 DIP AppBar 영역 예약 및 종료 시 해제
+- DPI, 디스플레이 변경, 절전 복귀 및 원격 데스크톱 세션 전환 대응
+- 실행 중인 데스크톱 창과 아이콘 표시
+- 창 버튼 클릭으로 활성화, 활성 창 재클릭으로 최소화
+- 최소화 전 최대화 상태를 기억하여 다시 선택할 때 최대화 상태 복원
+- 실행 중 창의 표시 순서 유지 및 창 버튼 폭 설정
+- Windows 밝은/어두운 테마와 강조색 반영
+- 날짜·시간 및 월간 달력
+- JSON 기반 런처: EXE, LNK, 폴더, HTTP/HTTPS URL, 이름 검색, 최근 실행 5개
+- 실행 중인 앱을 우클릭하여 런처에 추가
+- 카운트다운 타이머
+- 다중 알람, 1회성 알람 및 요일 반복 알람
+- Outlook Classic 받은편지함의 미확인 메일 표시
+- 단일 인스턴스 실행과 로컬 진단 로그
 
-## 기술 스택
+## 지원 환경
 
-- C#
-- .NET 8
-- WPF
-- Win32 API (P/Invoke)
+- Windows 10 또는 Windows 11
+- x64 PC
+- 소스 빌드: .NET 8 SDK 필요
+- self-contained 배포본 및 설치 프로그램 실행: 별도 .NET 설치 불필요
 
 ## 프로젝트 구조
 
-- `TopTaskBar.sln`: 솔루션 파일
-- `TopTaskBar/TopTaskBar.csproj`: WPF 프로젝트
-- `TopTaskBar/AppBarHelper.cs`: AppBar 등록/해제 및 상단 영역 예약
-- `TopTaskBar/WindowCatalog.cs`: 실행 중 창 열거, 아이콘 추출, 창 전환
-- `TopTaskBar/MainWindow.xaml`: 상단 바 UI
-- `TopTaskBar/MainWindow.xaml.cs`: UI 상태, 갱신, 설정 처리
-- `TopTaskBar/SettingsStore.cs`: 설정 저장/불러오기
+- `TopTaskBar.sln`: 앱과 테스트 솔루션
+- `TopTaskBar/TopTaskBar.csproj`: WPF 앱 프로젝트
+- `TopTaskBar.Tests/`: 알람 및 설정 저장 자동 테스트
+- `TopTaskBar/AppBarHelper.cs`: AppBar 등록, 화면 예약 및 디스플레이 복구
+- `TopTaskBar/WindowCatalog.cs`: 창 열거, 아이콘 추출 및 창 전환
+- `TopTaskBar/MainWindow.xaml`: 상단 바와 팝업 UI
+- `TopTaskBar/MainWindow.xaml.cs`: UI 상태 및 기능 연결
+- `TopTaskBar/SettingsStore.cs`: 설정 저장, 복구 및 손상 파일 백업
+- `TopTaskBar/AlarmScheduler.cs`: 다중 알람 스케줄링
+- `InnoSetupScript.iss`: Inno Setup 설치 프로그램 정의
 
-## 빌드 방법
+상세 구조는 [아키텍처 문서](docs/ARCHITECTURE.md)를 참고하세요.
 
-### Visual Studio
+## 빌드 및 실행
 
-1. `TopTaskBar.sln` 을 엽니다.
-2. 구성은 `Debug`, 플랫폼은 기본값으로 둡니다.
-3. `F5` 로 실행하거나 `Ctrl+F5` 로 디버그 없이 실행합니다.
-
-### CLI
-
-빌드:
-
-```powershell
-dotnet build TopTaskBar.sln -c Release
-```
-
-실행:
-
-```powershell
-dotnet run --project .\TopTaskBar\TopTaskBar.csproj -c Release
-```
-
-### Publish
-
-배포용 파일 생성:
-
-```powershell
-dotnet publish .\TopTaskBar\TopTaskBar.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishReadyToRun=false -o .\TopTaskBar\bin\Release\manual-publish\win-x64
-```
-
-출력 폴더:
-
-```text
-TopTaskBar\bin\Release\manual-publish\win-x64
-```
-
-참고:
-- GitHub Release에는 이 폴더 내용을 zip으로 묶어서 올립니다.
-- `TopTaskBar.pdb` 는 배포 zip에서 제외해도 됩니다.
-
-### 설치 프로그램 생성
-
-설치 프로그램은 [Inno Setup 6](https://jrsoftware.org/isinfo.php)로 생성합니다. 먼저 위의 `dotnet publish` 명령을 실행한 뒤, 저장소 루트에서 아래 명령을 실행합니다.
-
-Inno Setup이 PATH에 등록되어 있는 경우:
-
-```powershell
-ISCC.exe .\InnoSetupScript.iss
-```
-
-PATH에 등록되어 있지 않은 경우:
-
-```powershell
-& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" .\InnoSetupScript.iss
-```
-
-설치 파일 출력 위치:
-
-```text
-Output\TopTaskBar_Setup.exe
-```
-
-릴리스 준비 순서:
+Visual Studio에서는 `TopTaskBar.sln`을 열고 `F5` 또는 `Ctrl+F5`로 실행합니다.
 
 ```powershell
 dotnet build .\TopTaskBar.sln -c Release
-dotnet publish .\TopTaskBar\TopTaskBar.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishReadyToRun=false -o .\TopTaskBar\bin\Release\manual-publish\win-x64
-& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" .\InnoSetupScript.iss
+dotnet test .\TopTaskBar.sln -c Release
+dotnet run --project .\TopTaskBar\TopTaskBar.csproj -c Release
 ```
 
-## 실행 확인 포인트
+## 설정과 로그
 
-- 상단에 바가 표시되는지
-- 다른 창을 최대화했을 때 상단 영역이 유지되는지
-- 앱 아이콘 버튼 클릭 시 창 전환이 되는지
-- 날짜/시간 버튼이 앱 버튼의 오른쪽 끝에 표시되는지
-- `...` 버튼 좌클릭 또는 상단 바 우클릭으로 설정 메뉴가 열리는지
+설정 파일:
 
-## 설정
+```text
+%LocalAppData%\TopTaskBar\settings.json
+```
 
-현재는 아래 항목이 설정 메뉴에 연결되어 있습니다.
+런처의 `JSON 수정` 버튼으로 열 수 있으며, 정상적으로 저장하면 실행 중인 앱에 자동 반영됩니다. JSON을 읽을 수 없으면 현재 실행 중인 설정을 유지하고 같은 폴더에 `settings.invalid-날짜.json` 백업을 만듭니다.
 
-- 앱 버튼 폭 확대/축소
-- 앱 버튼 폭 기본값 복원
-- 창 목록 새로고침
-- 앱 종료
+진단 로그:
 
-설정은 로컬에 저장됩니다.
+```text
+%LocalAppData%\TopTaskBar\logs\interaction.log
+```
 
 ## 런처 항목 추가
 
-런처에는 실행 파일뿐 아니라 폴더, URL, 바로가기도 넣을 수 있습니다.
+실행 파일과 바로가기는 런처 하단의 `앱 추가` 버튼에서 `.exe` 또는 `.lnk` 파일을 선택합니다. 실행 중인 창 버튼을 우클릭하여 해당 프로그램을 추가할 수도 있습니다.
 
-### 실행 파일과 바로가기
-
-- 런처 하단의 `앱 추가` 버튼을 누릅니다.
-- 파일 선택 창에서 `.exe` 또는 `.lnk` 파일을 고릅니다.
-- 선택한 항목이 런처 목록에 바로 추가됩니다.
-
-예:
-- 바탕화면의 `Visual Studio 2022.lnk`
-- 시작 메뉴 폴더 안의 프로그램 바로가기
-
-### 폴더와 URL
-
-- 런처 하단의 `JSON 수정` 버튼으로 `settings.json`을 엽니다.
-- `PinnedApps`에 항목을 직접 추가합니다.
-- 저장하면 파일 변경 감시로 앱에 바로 반영됩니다.
-
-폴더 예:
+폴더와 URL은 `JSON 수정`에서 `PinnedApps`에 추가합니다.
 
 ```json
 {
@@ -158,8 +88,6 @@ dotnet publish .\TopTaskBar\TopTaskBar.csproj -c Release -r win-x64 --self-conta
 }
 ```
 
-URL 예:
-
 ```json
 {
   "Name": "! Google",
@@ -169,20 +97,26 @@ URL 예:
 }
 ```
 
-정렬 참고:
-- 런처 항목은 이름 기준으로 정렬됩니다.
-- 필요하면 `!` 같은 특수문자를 이름 앞에 붙여 위쪽으로 올릴 수 있습니다.
+런처 항목은 이름순으로 표시됩니다. 최근 실행 목록은 `RecentLauncherPaths`에 저장되며 최대 5개를 유지합니다.
 
-### 최근 실행 앱
+## 타이머와 알람
 
-- 런처로 실행한 항목은 상단 `Recent` 아이콘 영역에 최대 5개까지 표시됩니다.
-- 최근 목록은 `settings.json`의 `RecentLauncherPaths`에 저장되며, 앱을 다시 실행해도 유지됩니다.
+- 타이머는 분·초를 지정하여 시작, 중지 및 리셋할 수 있습니다.
+- 요일을 선택하지 않은 알람은 다음 도래 시각에 한 번 울리고 자동으로 꺼집니다.
+- 요일을 선택한 알람은 해당 요일마다 반복됩니다.
+- 같은 시각의 알람이 여러 개면 모두 처리합니다.
+- 타이머와 알람은 TopTaskBar가 실행 중일 때만 동작합니다.
 
-### 알람 스케줄러
-- 알람 스케줄러는 활성화된 알람 중에서 가장 가까운 다음 알람 1개를 기준으로 동작합니다.
-- 현재 시간 확인은 `AlarmScheduler`가 1초마다 한 번만 수행하며, 이 정도 주기는 시스템 부하가 거의 없는 수준입니다.
+## Outlook 알림
 
-## 참고
+Outlook Classic이 실행 중이면 기본 받은편지함의 미확인 메일 여부를 5초 간격으로 확인하고 Outlook 창 버튼에 표시합니다. 새 Outlook 및 Outlook이 실행되지 않은 상태는 지원 대상이 아닙니다.
 
-- `bin`, `obj`, `.vs` 는 Git에 포함하지 않도록 `.gitignore` 가 설정되어 있습니다.
-- 일부 앱은 창 전환/최소화 동작이 Windows 포커스 정책이나 앱 종류에 따라 다르게 보일 수 있습니다.
+## 릴리스
+
+publish와 설치 프로그램 생성 절차, 버전 확인 및 수동 테스트 목록은 [릴리스 문서](docs/RELEASE.md)에 정리되어 있습니다.
+
+## 제한 사항
+
+- 일부 관리자 권한 앱, UWP 앱 및 특수 시스템 창은 경로 획득이나 포커스 전환이 제한될 수 있습니다.
+- 일부 앱은 자체 전체 화면 모드나 Windows 포커스 정책 때문에 창 전환 방식이 다르게 보일 수 있습니다.
+- Outlook 미확인 메일 표시는 Outlook Classic의 실행 중 COM 인스턴스를 사용합니다.

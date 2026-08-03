@@ -21,55 +21,129 @@ internal static class SettingsStore
 
     public static TopTaskBarSettings Load()
     {
+        if (TryLoad(out var settings))
+        {
+            return settings;
+        }
+
+        return CreateDefaultSettings();
+    }
+
+    public static bool TryLoad(out TopTaskBarSettings settings)
+    {
+        return TryLoadFromPath(SettingsFilePath, out settings);
+    }
+
+    internal static bool TryLoadFromPath(string settingsPath, out TopTaskBarSettings settings)
+    {
         try
         {
-            if (!File.Exists(SettingsFilePath))
+            if (!File.Exists(settingsPath))
             {
-                var defaultSettings = CreateDefaultSettings();
-                Save(defaultSettings);
-                return defaultSettings;
+                settings = CreateDefaultSettings();
+                SaveToPath(settings, settingsPath);
+                return true;
             }
 
-            var json = File.ReadAllText(SettingsFilePath);
-            var settings = JsonSerializer.Deserialize<TopTaskBarSettings>(json) ?? CreateDefaultSettings();
-            var shouldSave = false;
-
-            if (settings.PinnedApps is null || settings.PinnedApps.Count == 0)
-            {
-                settings.PinnedApps = CreateDefaultPinnedApps();
-                shouldSave = true;
-            }
-
-            if (settings.RecentLauncherPaths is null)
-            {
-                settings.RecentLauncherPaths = [];
-                shouldSave = true;
-            }
-
-            if (settings.AlarmEntries is null || settings.AlarmEntries.Count == 0)
-            {
-                settings.AlarmEntries = CreateDefaultAlarmEntries();
-                shouldSave = true;
-            }
+            var json = File.ReadAllText(settingsPath);
+            settings = JsonSerializer.Deserialize<TopTaskBarSettings>(json) ??
+                       throw new JsonException("설정 파일의 루트 개체가 비어 있습니다.");
+            var shouldSave = Normalize(settings);
 
             if (shouldSave)
             {
-                Save(settings);
+                SaveToPath(settings, settingsPath);
             }
 
-            return settings;
+            return true;
         }
-        catch
+        catch (Exception ex)
         {
-            return CreateDefaultSettings();
+            InteractionLogger.Log(
+                $"SettingsLoadFailed path=\"{settingsPath}\" type=\"{ex.GetType().FullName}\" message=\"{ex.Message}\"");
+            BackupInvalidSettings(settingsPath);
+            settings = CreateDefaultSettings();
+            return false;
         }
     }
 
     public static void Save(TopTaskBarSettings settings)
     {
-        Directory.CreateDirectory(SettingsDirectoryPath);
+        SaveToPath(settings, SettingsFilePath);
+    }
+
+    internal static void SaveToPath(TopTaskBarSettings settings, string settingsPath)
+    {
+        var directoryPath = Path.GetDirectoryName(settingsPath) ?? ".";
+        Directory.CreateDirectory(directoryPath);
+
         var json = JsonSerializer.Serialize(settings, SerializerOptions);
-        File.WriteAllText(SettingsFilePath, json);
+        var temporaryPath = Path.Combine(
+            directoryPath,
+            $"{Path.GetFileName(settingsPath)}.{Guid.NewGuid():N}.tmp");
+
+        try
+        {
+            File.WriteAllText(temporaryPath, json);
+            File.Move(temporaryPath, settingsPath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+            {
+                File.Delete(temporaryPath);
+            }
+        }
+    }
+
+    private static bool Normalize(TopTaskBarSettings settings)
+    {
+        var shouldSave = false;
+
+        if (settings.PinnedApps is null || settings.PinnedApps.Count == 0)
+        {
+            settings.PinnedApps = CreateDefaultPinnedApps();
+            shouldSave = true;
+        }
+
+        if (settings.RecentLauncherPaths is null)
+        {
+            settings.RecentLauncherPaths = [];
+            shouldSave = true;
+        }
+
+        if (settings.AlarmEntries is null || settings.AlarmEntries.Count == 0)
+        {
+            settings.AlarmEntries = CreateDefaultAlarmEntries();
+            shouldSave = true;
+        }
+
+        return shouldSave;
+    }
+
+    private static void BackupInvalidSettings(string settingsPath)
+    {
+        if (!File.Exists(settingsPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var directoryPath = Path.GetDirectoryName(settingsPath) ?? ".";
+            var fileName = Path.GetFileNameWithoutExtension(settingsPath);
+            var extension = Path.GetExtension(settingsPath);
+            var backupPath = Path.Combine(
+                directoryPath,
+                $"{fileName}.invalid-{DateTime.Now:yyyyMMdd-HHmmssfff}{extension}");
+            File.Copy(settingsPath, backupPath, overwrite: false);
+            InteractionLogger.Log($"InvalidSettingsBackedUp source=\"{settingsPath}\" backup=\"{backupPath}\"");
+        }
+        catch (Exception ex)
+        {
+            InteractionLogger.Log(
+                $"InvalidSettingsBackupFailed path=\"{settingsPath}\" type=\"{ex.GetType().FullName}\" message=\"{ex.Message}\"");
+        }
     }
 
     private static TopTaskBarSettings CreateDefaultSettings()

@@ -11,6 +11,7 @@ namespace TopTaskBar;
 
 internal static class WindowCatalog
 {
+    private static readonly HashSet<IntPtr> RestoreMaximizedWindows = [];
     private const int PreferredIconSize = 32;
     private const int DwmaCloaked = 14;
     private const int GwlExstyle = -20;
@@ -26,9 +27,10 @@ internal static class WindowCatalog
     private const int SwRestore = 9;
     private const int SwMinimize = 6;
     private const int SwShow = 5;
+    private const int SwShowMaximized = 3;
+    private const int WpfRestoreToMaximized = 0x0002;
     private const int WmSyscommand = 0x0112;
     private static readonly IntPtr ScMinimize = new(0xF020);
-    private static readonly IntPtr ScRestore = new(0xF120);
     private const uint ProcessQueryLimitedInformation = 0x1000;
     private const uint ShgfiIcon = 0x000000100;
     private const uint ShgfiLargeIcon = 0x000000000;
@@ -37,6 +39,7 @@ internal static class WindowCatalog
 
     public static IReadOnlyList<AppWindowInfo> GetOpenWindows(IntPtr excludedHwnd)
     {
+        RestoreMaximizedWindows.RemoveWhere(hwnd => !IsWindow(hwnd));
         var windows = new List<AppWindowInfo>();
         var shellWindow = GetShellWindow();
         var foregroundWindow = GetComparableWindow(GetForegroundWindow());
@@ -88,11 +91,13 @@ internal static class WindowCatalog
 
         if (IsWindowMinimized(hwnd))
         {
-            SendMessage(hwnd, WmSyscommand, ScRestore, IntPtr.Zero);
-            ShowWindowAsync(hwnd, SwRestore);
+            var restoreMaximized = ShouldRestoreMaximized(hwnd);
+            ShowWindowAsync(hwnd, restoreMaximized ? SwShowMaximized : SwRestore);
+            RestoreMaximizedWindows.Remove(hwnd);
         }
         else
         {
+            RestoreMaximizedWindows.Remove(hwnd);
             ShowWindowAsync(hwnd, SwShow);
         }
 
@@ -143,17 +148,22 @@ internal static class WindowCatalog
 
         var originalHwnd = hwnd;
         hwnd = GetActionableWindow(hwnd);
+        if (IsZoomed(hwnd))
+        {
+            RestoreMaximizedWindows.Add(hwnd);
+        }
+        else
+        {
+            RestoreMaximizedWindows.Remove(hwnd);
+        }
+
         InteractionLogger.Log(
-            $"MinimizeWindow original=0x{originalHwnd.ToInt64():X} target=0x{hwnd.ToInt64():X} minimizedBefore={IsWindowMinimized(hwnd)}");
+            $"MinimizeWindow original=0x{originalHwnd.ToInt64():X} target=0x{hwnd.ToInt64():X} " +
+            $"minimizedBefore={IsWindowMinimized(hwnd)} restoreMaximized={RestoreMaximizedWindows.Contains(hwnd)}");
         SendMessage(hwnd, WmSyscommand, ScMinimize, IntPtr.Zero);
         ShowWindowAsync(hwnd, SwMinimize);
         InteractionLogger.Log(
             $"MinimizeWindow result target=0x{hwnd.ToInt64():X} minimizedAfter={IsWindowMinimized(hwnd)}");
-    }
-
-    public static bool IsForegroundWindow(IntPtr hwnd)
-    {
-        return hwnd != IntPtr.Zero && GetComparableWindow(hwnd) == GetComparableWindow(GetForegroundWindow());
     }
 
     public static WindowDebugInfo GetWindowDebugInfo(IntPtr hwnd)
@@ -244,6 +254,22 @@ internal static class WindowCatalog
         };
 
         return GetWindowPlacement(hwnd, ref placement) && placement.showCmd == SwShowminimized;
+    }
+
+    private static bool ShouldRestoreMaximized(IntPtr hwnd)
+    {
+        if (RestoreMaximizedWindows.Contains(hwnd))
+        {
+            return true;
+        }
+
+        var placement = new WindowPlacement
+        {
+            length = Marshal.SizeOf<WindowPlacement>()
+        };
+
+        return GetWindowPlacement(hwnd, ref placement) &&
+               (placement.flags & WpfRestoreToMaximized) != 0;
     }
 
     private static bool ShouldIncludeWindow(IntPtr hwnd, IntPtr excludedHwnd, IntPtr shellWindow)
@@ -461,6 +487,9 @@ internal static class WindowCatalog
     private static extern bool IsWindowVisible(IntPtr hWnd);
 
     [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
     private static extern IntPtr GetShellWindow();
 
     [DllImport("user32.dll")]
@@ -485,9 +514,6 @@ internal static class WindowCatalog
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-    [DllImport("user32.dll")]
     private static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
 
     [DllImport("user32.dll")]
@@ -500,7 +526,7 @@ internal static class WindowCatalog
     private static extern IntPtr SetActiveWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
-    private static extern bool IsIconic(IntPtr hWnd);
+    private static extern bool IsZoomed(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     private static extern bool GetWindowPlacement(IntPtr hWnd, ref WindowPlacement lpwndpl);
