@@ -12,8 +12,18 @@ internal enum LauncherTargetType
     Url
 }
 
+internal sealed record RunningAppLauncherTarget(
+    string Name,
+    string Path,
+    string Arguments,
+    string WorkingDirectory,
+    bool ReplaceBareHostEntry);
+
 internal static class LauncherTargetHelper
 {
+    private const string HyperVManagerTitleKorean = "Hyper-V 관리자";
+    private const string HyperVManagerTitleEnglish = "Hyper-V Manager";
+
     public static LauncherTargetType GetTargetType(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -81,6 +91,69 @@ internal static class LauncherTargetHelper
         }
 
         return Path.GetFileNameWithoutExtension(executablePath);
+    }
+
+    public static bool TryResolveRunningApp(
+        string windowTitle,
+        string executablePath,
+        out RunningAppLauncherTarget? target,
+        out string message)
+    {
+        return TryResolveRunningApp(
+            windowTitle,
+            executablePath,
+            Environment.SystemDirectory,
+            File.Exists,
+            out target,
+            out message);
+    }
+
+    internal static bool TryResolveRunningApp(
+        string windowTitle,
+        string executablePath,
+        string systemDirectory,
+        Func<string, bool> fileExists,
+        out RunningAppLauncherTarget? target,
+        out string message)
+    {
+        target = null;
+        message = string.Empty;
+
+        if (!string.Equals(Path.GetFileName(executablePath), "mmc.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            target = new RunningAppLauncherTarget(
+                GetDisplayName(windowTitle, executablePath),
+                executablePath,
+                string.Empty,
+                Path.GetDirectoryName(executablePath) ?? string.Empty,
+                false);
+            return true;
+        }
+
+        var normalizedTitle = windowTitle.Trim();
+        var isHyperVManager =
+            string.Equals(normalizedTitle, HyperVManagerTitleKorean, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalizedTitle, HyperVManagerTitleEnglish, StringComparison.OrdinalIgnoreCase);
+        if (!isHyperVManager)
+        {
+            message = "MMC 기반 앱은 실행 파일만으로 구분할 수 없습니다. 바로가기(.lnk)를 추가하거나 JSON에서 콘솔 파일 인수를 지정해 주세요.";
+            return false;
+        }
+
+        var consolePath = Path.Combine(systemDirectory, "virtmgmt.msc");
+        if (!fileExists(consolePath))
+        {
+            message = "Hyper-V 관리자 콘솔 파일(virtmgmt.msc)을 찾을 수 없습니다.";
+            return false;
+        }
+
+        target = new RunningAppLauncherTarget(
+            HyperVManagerTitleKorean,
+            executablePath,
+            $"\"{consolePath}\"",
+            systemDirectory,
+            true);
+        return true;
     }
 
     public static bool TryValidate(string path, LauncherTargetType targetType, out string message)

@@ -31,6 +31,9 @@ internal static class WindowCatalog
     private const int WpfRestoreToMaximized = 0x0002;
     private const int WmSyscommand = 0x0112;
     private static readonly IntPtr ScMinimize = new(0xF020);
+    private static readonly IntPtr ScRestore = new(0xF120);
+    private const uint SmtoAbortIfHung = 0x0002;
+    private const uint RestoreTimeoutMilliseconds = 500;
     private const uint ProcessQueryLimitedInformation = 0x1000;
     private const uint ShgfiIcon = 0x000000100;
     private const uint ShgfiLargeIcon = 0x000000000;
@@ -92,7 +95,25 @@ internal static class WindowCatalog
         if (IsWindowMinimized(hwnd))
         {
             var restoreMaximized = ShouldRestoreMaximized(hwnd);
-            ShowWindowAsync(hwnd, restoreMaximized ? SwShowMaximized : SwRestore);
+            var restoreCommandResult = IntPtr.Zero;
+
+            if (!restoreMaximized)
+            {
+                _ = SendMessageTimeout(
+                    hwnd,
+                    WmSyscommand,
+                    ScRestore,
+                    IntPtr.Zero,
+                    SmtoAbortIfHung,
+                    RestoreTimeoutMilliseconds,
+                    out restoreCommandResult);
+            }
+
+            var showResult = ShowWindowAsync(hwnd, restoreMaximized ? SwShowMaximized : SwRestore);
+            InteractionLogger.Log(
+                $"RestoreWindow target=0x{hwnd.ToInt64():X} restoreMaximized={restoreMaximized} " +
+                $"restoreCommandResult=0x{restoreCommandResult.ToInt64():X} showResult={showResult} " +
+                $"minimizedAfterRequest={IsWindowMinimized(hwnd)}");
             RestoreMaximizedWindows.Remove(hwnd);
         }
         else
@@ -542,6 +563,16 @@ internal static class WindowCatalog
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd,
+        uint Msg,
+        IntPtr wParam,
+        IntPtr lParam,
+        uint fuFlags,
+        uint uTimeout,
+        out IntPtr lpdwResult);
 
     [DllImport("user32.dll", EntryPoint = "GetClassLongPtr", SetLastError = true)]
     private static extern IntPtr GetClassLongPtr(IntPtr hWnd, IntPtr nIndex);

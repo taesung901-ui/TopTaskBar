@@ -56,6 +56,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _wasLeftButtonDown;
     private bool _wasRightButtonDown;
     private DateTime _ignoreOutsideClickUntilUtc = DateTime.MinValue;
+    private IntPtr _lastMinimizedWindowHandle;
+    private DateTime _lastWindowMinimizedAtUtc = DateTime.MinValue;
     private ToolTab _selectedToolTab = ToolTab.Timer;
 
     public MainWindow()
@@ -286,13 +288,31 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             $"foreground=0x{debugInfo.ForegroundHandle.ToInt64():X} foregroundComparable=0x{debugInfo.ForegroundComparableHandle.ToInt64():X} " +
             $"isMinimized={debugInfo.IsMinimized}");
 
-        if (windowInfo.IsActive)
+        var nowUtc = DateTime.UtcNow;
+        var protectAutoRevealedWindow = WindowClickPolicy.ShouldProtectAutoRevealedWindow(
+            windowInfo.IsActive,
+            debugInfo.IsMinimized,
+            windowInfo.Hwnd,
+            _lastMinimizedWindowHandle,
+            _lastWindowMinimizedAtUtc,
+            nowUtc);
+
+        InteractionLogger.Log(
+            $"ButtonDecision title=\"{windowInfo.Title}\" protectAutoRevealed={protectAutoRevealedWindow} " +
+            $"lastMinimized=0x{_lastMinimizedWindowHandle.ToInt64():X} " +
+            $"elapsedSinceMinimizeMs={(nowUtc - _lastWindowMinimizedAtUtc).TotalMilliseconds:0}");
+
+        if (windowInfo.IsActive && !debugInfo.IsMinimized && !protectAutoRevealedWindow)
         {
             WindowCatalog.MinimizeWindow(windowInfo.Hwnd);
+            _lastMinimizedWindowHandle = windowInfo.Hwnd;
+            _lastWindowMinimizedAtUtc = DateTime.UtcNow;
         }
         else
         {
             WindowCatalog.ActivateWindow(windowInfo.Hwnd);
+            _lastMinimizedWindowHandle = IntPtr.Zero;
+            _lastWindowMinimizedAtUtc = DateTime.MinValue;
         }
 
         RefreshOpenWindows();
@@ -661,19 +681,32 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InteractionLogger.Log(
             $"AddRunningAppToLauncherPathResolved title=\"{windowInfo.Title}\" hwnd=0x{windowInfo.Hwnd.ToInt64():X} path=\"{executablePath}\"");
 
-        var appName = LauncherTargetHelper.GetDisplayName(windowInfo.Title, executablePath);
-        if (!TryAddPinnedApp(appName, executablePath, out var message))
+        if (!LauncherTargetHelper.TryResolveRunningApp(
+                windowInfo.Title,
+                executablePath,
+                out var target,
+                out var message) ||
+            target is null)
+        {
+            InteractionLogger.Log(
+                $"AddRunningAppToLauncherResolveRejected title=\"{windowInfo.Title}\" hwnd=0x{windowInfo.Hwnd.ToInt64():X} " +
+                $"path=\"{executablePath}\" message=\"{message}\"");
+            ShowOwnedMessageBox(message, "TopTaskBar", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (!TryAddPinnedApp(target, out message))
         {
             InteractionLogger.Log(
                 $"AddRunningAppToLauncherSaveFailed title=\"{windowInfo.Title}\" hwnd=0x{windowInfo.Hwnd.ToInt64():X} " +
-                $"path=\"{executablePath}\" appName=\"{appName}\" message=\"{message}\"");
+                $"path=\"{target.Path}\" args=\"{target.Arguments}\" appName=\"{target.Name}\" message=\"{message}\"");
             ShowOwnedMessageBox(message, "TopTaskBar", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
         InteractionLogger.Log(
             $"AddRunningAppToLauncherSaved title=\"{windowInfo.Title}\" hwnd=0x{windowInfo.Hwnd.ToInt64():X} " +
-            $"path=\"{executablePath}\" appName=\"{appName}\" message=\"{message}\"");
+            $"path=\"{target.Path}\" args=\"{target.Arguments}\" appName=\"{target.Name}\" message=\"{message}\"");
 
         ShowOwnedMessageBox(
             message,
@@ -1358,9 +1391,32 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private bool TryAddPinnedApp(string appNameCandidate, string executablePath, out string message)
     {
+        var targetType = LauncherTargetHelper.GetTargetType(executablePath);
+        var workingDirectory = targetType switch
+        {
+            LauncherTargetType.Executable => Path.GetDirectoryName(executablePath) ?? string.Empty,
+            LauncherTargetType.Directory => executablePath,
+            _ => string.Empty
+        };
+
+        return TryAddPinnedApp(
+            new RunningAppLauncherTarget(
+                appNameCandidate,
+                executablePath,
+                string.Empty,
+                workingDirectory,
+                false),
+            out message);
+    }
+
+    private bool TryAddPinnedApp(RunningAppLauncherTarget candidate, out string message)
+    {
         InteractionLogger.Log(
-            $"TryAddPinnedAppStart candidate=\"{appNameCandidate}\" path=\"{executablePath}\"");
+            $"TryAddPinnedAppStart candidate=\"{candidate.Name}\" path=\"{candidate.Path}\" args=\"{candidate.Arguments}\"");
         message = string.Empty;
+
+        var appNameCandidate = candidate.Name;
+        var executablePath = candidate.Path;
 
         if (string.IsNullOrWhiteSpace(executablePath))
         {
@@ -1378,6 +1434,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         var targetType = LauncherTargetHelper.GetTargetType(executablePath);
+        var workingDirectory = candidate.WorkingDirectory;
+        if (!string.Equals(originalExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
+        {
+            workingDirectory = targetType switch
+            {
+                LauncherTargetType.Executable => Path.GetDirectoryName(executablePath) ?? string.Empty,
+                LauncherTargetType.Directory => executablePath,
+                _ => string.Empty
+            };
+        }
+
         if (targetType == LauncherTargetType.Unknown)
         {
             message = "현재는 .exe, .lnk, 폴더, http/https URL만 런처에 추가할 수 있습니다.";
@@ -1400,31 +1467,40 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return false;
         }
 
-        if (_settings.PinnedApps.Any(app =>
-                string.Equals(app.Path, executablePath, StringComparison.OrdinalIgnoreCase)))
+        var existingApp = _settings.PinnedApps.FirstOrDefault(app =>
+            string.Equals(app.Path, executablePath, StringComparison.OrdinalIgnoreCase));
+        if (existingApp is not null &&
+            candidate.ReplaceBareHostEntry &&
+            string.IsNullOrWhiteSpace(existingApp.Arguments))
+        {
+            InteractionLogger.Log(
+                $"TryAddPinnedAppReplaceBareHost oldName=\"{existingApp.Name}\" path=\"{existingApp.Path}\" " +
+                $"newName=\"{candidate.Name}\" args=\"{candidate.Arguments}\"");
+            existingApp.Name = candidate.Name;
+            existingApp.Path = executablePath;
+            existingApp.Arguments = candidate.Arguments;
+            existingApp.WorkingDirectory = workingDirectory;
+        }
+        else if (existingApp is not null)
         {
             message = "이미 런처에 추가된 앱입니다.";
             InteractionLogger.Log($"TryAddPinnedAppReject reason=\"duplicate\" path=\"{executablePath}\" message=\"{message}\"");
             return false;
         }
-
-        var appName = string.IsNullOrWhiteSpace(appNameCandidate)
-            ? LauncherTargetHelper.GetDefaultName(executablePath, targetType)
-            : appNameCandidate.Trim();
-        var workingDirectory = targetType switch
+        else
         {
-            LauncherTargetType.Executable => Path.GetDirectoryName(executablePath) ?? string.Empty,
-            LauncherTargetType.Directory => executablePath,
-            _ => string.Empty
-        };
+            var appName = string.IsNullOrWhiteSpace(appNameCandidate)
+                ? LauncherTargetHelper.GetDefaultName(executablePath, targetType)
+                : appNameCandidate.Trim();
 
-        _settings.PinnedApps.Add(new LauncherAppSetting
-        {
-            Name = appName,
-            Path = executablePath,
-            Arguments = string.Empty,
-            WorkingDirectory = workingDirectory
-        });
+            _settings.PinnedApps.Add(new LauncherAppSetting
+            {
+                Name = appName,
+                Path = executablePath,
+                Arguments = candidate.Arguments,
+                WorkingDirectory = workingDirectory
+            });
+        }
 
         _settings.PinnedApps = _settings.PinnedApps
             .OrderBy(app => app.Name, StringComparer.CurrentCultureIgnoreCase)
@@ -1434,8 +1510,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SettingsStore.Save(_settings);
         LoadLauncherApps();
 
-        message = $"'{appName}' 앱을 런처에 추가했습니다.";
-        InteractionLogger.Log($"TryAddPinnedAppSuccess appName=\"{appName}\" path=\"{executablePath}\"");
+        var savedAppName = string.IsNullOrWhiteSpace(appNameCandidate)
+            ? LauncherTargetHelper.GetDefaultName(executablePath, targetType)
+            : appNameCandidate.Trim();
+        message = candidate.ReplaceBareHostEntry && existingApp is not null
+            ? $"기존 항목을 '{savedAppName}' 앱으로 수정했습니다."
+            : $"'{savedAppName}' 앱을 런처에 추가했습니다.";
+        InteractionLogger.Log(
+            $"TryAddPinnedAppSuccess appName=\"{savedAppName}\" path=\"{executablePath}\" args=\"{candidate.Arguments}\"");
         return true;
     }
 

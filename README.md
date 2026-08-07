@@ -51,6 +51,8 @@ TopTaskBar는 Windows 화면 상단에 고정되는 .NET 8 WPF 작업 전환 바
 
 Visual Studio에서는 `TopTaskBar.sln`을 열고 `F5` 또는 `Ctrl+F5`로 실행합니다.
 
+실행, 빌드, publish 및 설치 프로그램 생성 명령은 [BUILD.md](BUILD.md)에 한곳에 정리되어 있습니다.
+
 ```powershell
 dotnet build .\TopTaskBar.sln -c Release
 dotnet test .\TopTaskBar.sln -c Release
