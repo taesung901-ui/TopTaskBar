@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
@@ -20,6 +20,13 @@ internal sealed class AppBarHelper : IDisposable
     private const int WmDpiChanged = 0x02E0;
     private const int PbtApmResumeSuspend = 0x0007;
     private const int PbtApmResumeAutomatic = 0x0012;
+    private const int PbtApmSuspend = 0x0004;
+    private const int PbtPowerSettingChange = 0x8013;
+    private const int DeviceNotifyWindowHandle = 0x00000000;
+    // 화면 전원 상태. Modern Standby(S0)에서는 PBT_APMSUSPEND가 오지 않으므로
+    // 유휴 진입을 알 수 있는 실질적인 신호는 이쪽이다.
+    private static readonly Guid GuidConsoleDisplayState =
+        new("6fe69556-704a-47a0-8f24-c28d936fda47");
     private const int MaNoActivate = 3;
     private const int GwlExstyle = -20;
     private const int WsExNoActivate = 0x08000000;
@@ -39,6 +46,10 @@ internal sealed class AppBarHelper : IDisposable
     private int _pendingRefreshPasses;
     private int _pendingRefreshTotalPasses;
     private string _pendingRefreshReason = string.Empty;
+    private IntPtr _displayStateNotification;
+
+    /// <summary>화면이 켜지면 true, 꺼지면 false. 폴링 억제 판단에 쓴다.</summary>
+    public event EventHandler<bool>? DisplayStateChanged;
 
     public AppBarHelper(Window window)
     {
@@ -62,6 +73,11 @@ internal sealed class AppBarHelper : IDisposable
         }
 
         _source.AddHook(WndProc);
+
+        var displayStateGuid = GuidConsoleDisplayState;
+        _displayStateNotification = RegisterPowerSettingNotification(
+            hwnd, ref displayStateGuid, DeviceNotifyWindowHandle);
+
         ApplyNoActivateStyle(hwnd, enabled: true);
         RegisterAppBar(hwnd);
         UpdateAppBarBounds(hwnd, "Attach", logMetrics: true);
@@ -75,6 +91,12 @@ internal sealed class AppBarHelper : IDisposable
         SystemEvents.SessionSwitch -= OnSessionSwitch;
         _appBarRefreshTimer.Stop();
         _appBarRefreshTimer.Tick -= OnAppBarRefreshTimerTick;
+
+        if (_displayStateNotification != IntPtr.Zero)
+        {
+            UnregisterPowerSettingNotification(_displayStateNotification);
+            _displayStateNotification = IntPtr.Zero;
+        }
 
         if (_source is not null)
         {
@@ -199,10 +221,22 @@ internal sealed class AppBarHelper : IDisposable
             ScheduleAppBarRefresh("WmSettingChange");
         }
 
-        if (msg == WmPowerBroadcast &&
-            (wParam.ToInt32() == PbtApmResumeAutomatic || wParam.ToInt32() == PbtApmResumeSuspend))
+        if (msg == WmPowerBroadcast)
         {
-            ScheduleAppBarRefresh($"WmPowerBroadcast:{wParam.ToInt32()}");
+            var powerEvent = wParam.ToInt32();
+            if (powerEvent == PbtApmResumeAutomatic || powerEvent == PbtApmResumeSuspend)
+            {
+                ScheduleAppBarRefresh($"WmPowerBroadcast:{powerEvent}");
+            }
+            else if (powerEvent == PbtApmSuspend)
+            {
+                _appBarRefreshTimer.Stop();
+                DisplayStateChanged?.Invoke(this, false);
+            }
+            else if (powerEvent == PbtPowerSettingChange && lParam != IntPtr.Zero)
+            {
+                HandlePowerSettingChange(lParam);
+            }
         }
 
         if (msg == CallbackMessageId && wParam.ToInt32() == (int)AppBarNotification.PosChanged)
@@ -233,6 +267,50 @@ internal sealed class AppBarHelper : IDisposable
         {
             ScheduleAppBarRefresh("SystemEvents.PowerModeChanged.Resume", passes: 4);
         }
+        else if (e.Mode == PowerModes.Suspend)
+        {
+            _appBarRefreshTimer.Stop();
+        }
+    }
+
+    private void HandlePowerSettingChange(IntPtr lParam)
+    {
+        var setting = Marshal.PtrToStructure<PowerBroadcastSetting>(lParam);
+        if (setting.PowerSetting != GuidConsoleDisplayState || setting.DataLength < 1)
+        {
+            return;
+        }
+
+        // 0 = off, 1 = on, 2 = dimmed
+        var displayOn = setting.Data != 0;
+        InteractionLogger.Log($"ConsoleDisplayState state={setting.Data}");
+
+        if (displayOn)
+        {
+            ScheduleAppBarRefresh("ConsoleDisplayState.On", passes: 4);
+        }
+        else
+        {
+            _appBarRefreshTimer.Stop();
+        }
+
+        DisplayStateChanged?.Invoke(this, displayOn);
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr RegisterPowerSettingNotification(
+        IntPtr hRecipient, ref Guid powerSettingGuid, int flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnregisterPowerSettingNotification(IntPtr handle);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PowerBroadcastSetting
+    {
+        public Guid PowerSetting;
+        public int DataLength;
+        public byte Data;
     }
 
     private void OnSessionSwitch(object sender, SessionSwitchEventArgs e)

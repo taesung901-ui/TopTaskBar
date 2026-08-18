@@ -45,6 +45,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly AlarmScheduler _alarmScheduler;
     private readonly OutlookClassicUnreadMonitor _outlookUnreadMonitor;
     private AppBarHelper? _appBarHelper;
+    private bool _pollingSuspended;
     private TimerCompletedWindow? _timerCompletedWindow;
     private AlarmCompletedWindow? _alarmCompletedWindow;
     private AlarmEditWindow? _alarmEditWindow;
@@ -108,6 +109,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Closed += OnClosed;
         Activated += OnActivated;
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+        SystemEvents.PowerModeChanged += OnPowerModeChanged;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -220,9 +222,64 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _refreshTimer.Start();
     }
 
+    private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+    {
+        switch (e.Mode)
+        {
+            case PowerModes.Suspend:
+                SuspendPolling("PowerModes.Suspend");
+                break;
+            case PowerModes.Resume:
+                ResumePolling("PowerModes.Resume");
+                break;
+        }
+    }
+
+    // Modern Standby(S0)에서는 PowerModes.Suspend가 오지 않는다. 화면이 꺼지는 시점이
+    // 사실상의 유휴 진입 신호이므로, 이걸 기준으로 창 열거/폴링을 멈춘다.
+    private void OnDisplayStateChanged(object? sender, bool displayOn)
+    {
+        if (displayOn)
+        {
+            ResumePolling("ConsoleDisplayState.On");
+        }
+        else
+        {
+            SuspendPolling("ConsoleDisplayState.Off");
+        }
+    }
+
+    private void SuspendPolling(string reason)
+    {
+        if (_pollingSuspended)
+        {
+            return;
+        }
+
+        _pollingSuspended = true;
+        _refreshTimer.Stop();
+        _popupDismissTimer.Stop();
+        _settingsReloadTimer.Stop();
+        InteractionLogger.Log($"SuspendPolling reason={reason}");
+    }
+
+    private void ResumePolling(string reason)
+    {
+        if (!_pollingSuspended)
+        {
+            return;
+        }
+
+        _pollingSuspended = false;
+        InteractionLogger.Log($"ResumePolling reason={reason}");
+        RefreshOpenWindows();
+        _refreshTimer.Start();
+    }
+
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         _appBarHelper = new AppBarHelper(this);
+        _appBarHelper.DisplayStateChanged += OnDisplayStateChanged;
         _appBarHelper.Attach(new WindowInteropHelper(this).Handle);
     }
 
@@ -852,6 +909,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _settingsWatcher.Renamed -= OnSettingsFileRenamed;
         _settingsWatcher.Dispose();
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+
+        if (_appBarHelper is not null)
+        {
+            _appBarHelper.DisplayStateChanged -= OnDisplayStateChanged;
+        }
         _timerToolController.Completed -= OnTimerToolCompleted;
         _alarmScheduler.AlarmTriggered -= OnScheduledAlarmTriggered;
         _outlookUnreadMonitor.StateChanged -= OnOutlookUnreadStateChanged;

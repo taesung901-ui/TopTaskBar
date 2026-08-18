@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -34,6 +34,8 @@ internal static class WindowCatalog
     private static readonly IntPtr ScRestore = new(0xF120);
     private const uint SmtoAbortIfHung = 0x0002;
     private const uint RestoreTimeoutMilliseconds = 500;
+    private const uint MinimizeTimeoutMilliseconds = 500;
+    private const uint IconQueryTimeoutMilliseconds = 200;
     private const uint ProcessQueryLimitedInformation = 0x1000;
     private const uint ShgfiIcon = 0x000000100;
     private const uint ShgfiLargeIcon = 0x000000000;
@@ -77,13 +79,22 @@ internal static class WindowCatalog
 
     public static void ActivateWindow(IntPtr hwnd)
     {
-        if (hwnd == IntPtr.Zero)
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd))
         {
             return;
         }
 
         var originalHwnd = hwnd;
         hwnd = GetActionableWindow(hwnd);
+
+        // 창 목록은 2초 주기로 갱신되므로 클릭 시점의 핸들은 이미 파괴됐을 수 있다.
+        // 죽은 HWND로 포커스/입력 큐 조작을 진행하면 win32k의 핸들 검증 경로를 자극한다.
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd))
+        {
+            InteractionLogger.Log(
+                $"ActivateWindow aborted: stale handle original=0x{originalHwnd.ToInt64():X}");
+            return;
+        }
 
         var foregroundWindow = GetForegroundWindow();
         var currentThreadId = GetCurrentThreadId();
@@ -122,14 +133,21 @@ internal static class WindowCatalog
             ShowWindowAsync(hwnd, SwShow);
         }
 
-        if (foregroundThreadId != 0)
+        // 자기 자신에게 attach하는 호출은 문서상 실패한다. 실제로 attach에 성공한 것만
+        // finally에서 detach해야 입력 큐 연결이 어긋나지 않는다.
+        var attachedForeground = foregroundThreadId != 0 && foregroundThreadId != currentThreadId;
+        var attachedTarget = targetThreadId != 0 &&
+                             targetThreadId != currentThreadId &&
+                             targetThreadId != foregroundThreadId;
+
+        if (attachedForeground)
         {
-            AttachThreadInput(currentThreadId, foregroundThreadId, true);
+            attachedForeground = AttachThreadInput(currentThreadId, foregroundThreadId, true);
         }
 
-        if (targetThreadId != 0 && targetThreadId != foregroundThreadId)
+        if (attachedTarget)
         {
-            AttachThreadInput(currentThreadId, targetThreadId, true);
+            attachedTarget = AttachThreadInput(currentThreadId, targetThreadId, true);
         }
 
         try
@@ -148,12 +166,12 @@ internal static class WindowCatalog
         }
         finally
         {
-            if (targetThreadId != 0 && targetThreadId != foregroundThreadId)
+            if (attachedTarget)
             {
                 AttachThreadInput(currentThreadId, targetThreadId, false);
             }
 
-            if (foregroundThreadId != 0)
+            if (attachedForeground)
             {
                 AttachThreadInput(currentThreadId, foregroundThreadId, false);
             }
@@ -162,13 +180,20 @@ internal static class WindowCatalog
 
     public static void MinimizeWindow(IntPtr hwnd)
     {
-        if (hwnd == IntPtr.Zero)
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd))
         {
             return;
         }
 
         var originalHwnd = hwnd;
         hwnd = GetActionableWindow(hwnd);
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd))
+        {
+            InteractionLogger.Log(
+                $"MinimizeWindow aborted: stale handle original=0x{originalHwnd.ToInt64():X}");
+            return;
+        }
+
         if (IsZoomed(hwnd))
         {
             RestoreMaximizedWindows.Add(hwnd);
@@ -181,7 +206,14 @@ internal static class WindowCatalog
         InteractionLogger.Log(
             $"MinimizeWindow original=0x{originalHwnd.ToInt64():X} target=0x{hwnd.ToInt64():X} " +
             $"minimizedBefore={IsWindowMinimized(hwnd)} restoreMaximized={RestoreMaximizedWindows.Contains(hwnd)}");
-        SendMessage(hwnd, WmSyscommand, ScMinimize, IntPtr.Zero);
+        _ = SendMessageTimeout(
+            hwnd,
+            WmSyscommand,
+            ScMinimize,
+            IntPtr.Zero,
+            SmtoAbortIfHung,
+            MinimizeTimeoutMilliseconds,
+            out _);
         ShowWindowAsync(hwnd, SwMinimize);
         InteractionLogger.Log(
             $"MinimizeWindow result target=0x{hwnd.ToInt64():X} minimizedAfter={IsWindowMinimized(hwnd)}");
@@ -337,17 +369,33 @@ internal static class WindowCatalog
         return builder.ToString();
     }
 
+    // WM_GETICON은 대상 프로세스의 UI 스레드가 처리한다. 응답 없는 앱이 하나만 있어도
+    // 블로킹 SendMessage는 작업 표시줄 전체를 멈추므로 반드시 타임아웃을 건다.
+    private static IntPtr QueryWindowIcon(IntPtr hwnd, int iconType)
+    {
+        var sendResult = SendMessageTimeout(
+            hwnd,
+            WmGeticon,
+            new IntPtr(iconType),
+            IntPtr.Zero,
+            SmtoAbortIfHung,
+            IconQueryTimeoutMilliseconds,
+            out var iconHandle);
+
+        return sendResult == IntPtr.Zero ? IntPtr.Zero : iconHandle;
+    }
+
     private static ImageSource? GetWindowIcon(IntPtr hwnd)
     {
-        var iconHandle = SendMessage(hwnd, WmGeticon, new IntPtr(IconBig), IntPtr.Zero);
+        var iconHandle = QueryWindowIcon(hwnd, IconBig);
         if (iconHandle == IntPtr.Zero)
         {
-            iconHandle = SendMessage(hwnd, WmGeticon, new IntPtr(IconSmall2), IntPtr.Zero);
+            iconHandle = QueryWindowIcon(hwnd, IconSmall2);
         }
 
         if (iconHandle == IntPtr.Zero)
         {
-            iconHandle = SendMessage(hwnd, WmGeticon, new IntPtr(IconSmall), IntPtr.Zero);
+            iconHandle = QueryWindowIcon(hwnd, IconSmall);
         }
 
         if (iconHandle == IntPtr.Zero)
@@ -560,9 +608,6 @@ internal static class WindowCatalog
 
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
-
-    [DllImport("user32.dll", CharSet = CharSet.Auto)]
-    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SendMessageTimeout(
